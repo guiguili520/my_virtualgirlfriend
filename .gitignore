@@ -1,0 +1,38 @@
+# 模型文件
+Qwen2.5-7B-Instruct/
+qwen-ai-girlfriend-lora/
+
+# 模型权重文件
+*.pt
+*.pth
+*.safetensors
+*.bin
+*.ckpt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
+
+# 临时文件
+*.tmp
+*.temp
