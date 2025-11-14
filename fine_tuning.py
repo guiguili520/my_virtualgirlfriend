@@ -9,7 +9,7 @@ import torch
 # 配置参数
 model_path = "./Qwen2.5-7B-Instruct"
 output_dir = "./qwen-ai-girlfriend-lora"
-dataset_path = "./train_data/training_data.json"
+dataset_path = "./train_data/dataset/girlfriend_chat_dataset_20251113_052759.json"
 
 print("加载模型和tokenizer...")
 tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
