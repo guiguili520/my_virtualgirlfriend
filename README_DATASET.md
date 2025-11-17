@@ -10,17 +10,36 @@
 - 💕 符合二次元女友人设：温柔体贴、俏皮可爱、阳光开朗
 - 🌸 **包含丰富的场景类型（71个不同场景，18个分类）**
 - 😊 98%以上的回复包含emoji表情
+- 🚀 **NEW! 变化引擎**：智能生成8-10个风格一致但措辞不同的变体
+- 🔧 可配置变体数量、随机种子等参数
 - 📊 JSON格式输出，易于解析和使用
 - 🏗️ **模块化架构设计，易于扩展和维护**
 - 🔍 **支持场景分类、标签管理和元数据查询**
 
 ## 🚀 使用方法
 
-### 运行脚本
+### 快速开始
 
 ```bash
+# 生成500条数据，使用变化引擎，每个场景8个变体（默认）
 python3 generate_girlfriend_dataset.py
+
+# 生成1000条数据，每个场景10个变体
+python3 generate_girlfriend_dataset.py --num-samples 1000 --variants 10
+
+# 使用固定种子确保可重现性
+python3 generate_girlfriend_dataset.py --seed 42
+
+# 禁用变化引擎，使用原始固定回复
+python3 generate_girlfriend_dataset.py --no-variation-engine
 ```
+
+### 命令行选项
+
+- `--num-samples N`: 生成N条数据（默认500）
+- `--variants N`: 每个场景生成N个变体（默认8，仅在启用变化引擎时有效）
+- `--seed N`: 设置随机种子，用于确定性生成
+- `--no-variation-engine`: 禁用变化引擎，使用固定回复
 
 ### 输出位置
 
@@ -140,10 +159,12 @@ train_data/dataset/girlfriend_chat_dataset_<timestamp>.json
 - 俏皮可爱的表达
 - 阳光开朗的态度
 - 如冬天里的一抹暖阳
+- **智能验证**：每个变体都经过人设检查，确保符合女友角色
 
 ### 3. 丰富的表情
 - 98%以上的回复包含emoji
 - 适当使用语气词（呀、啦、哦、呢等）
+- 情感基调自动映射（happy/care/encourage/love等8种基调）
 - 增强情感表达
 
 ### 4. 结构化管理
