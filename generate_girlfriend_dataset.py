@@ -8,11 +8,81 @@
 import json
 import random
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional
+from variation_engine import VariationEngine, get_tone_for_scenario
 
-def generate_dataset(num_samples: int = 500) -> List[Dict[str, str]]:
-    """生成虚拟女友聊天数据集"""
+
+def expand_scenario_with_variations(
+    scenario: Dict,
+    variation_engine: Optional[VariationEngine],
+    variants_per_scenario: int
+) -> Dict:
+    """
+    将场景的回复扩展为多个变体
+    
+    Args:
+        scenario: 场景字典，包含instruction, input, 和 outputs 或 base_output
+        variation_engine: 变化引擎实例
+        variants_per_scenario: 每个场景要生成的变体数量
+        
+    Returns:
+        包含扩展后outputs的场景字典
+    """
+    # 如果已经有outputs列表，且不使用变化引擎，直接返回
+    if "outputs" in scenario and variation_engine is None:
+        return scenario
+    
+    # 如果使用变化引擎
+    if variation_engine is not None:
+        # 如果有base_output，使用它作为基础模板
+        if "base_output" in scenario:
+            base_template = scenario["base_output"]
+        # 否则使用outputs中的第一个作为基础模板
+        elif "outputs" in scenario and len(scenario["outputs"]) > 0:
+            base_template = scenario["outputs"][0]
+        else:
+            return scenario
+        
+        # 获取场景对应的情感基调
+        tone = get_tone_for_scenario(scenario["instruction"])
+        
+        # 生成变体
+        variations = variation_engine.generate_variations(
+            template=base_template,
+            num_variants=variants_per_scenario,
+            tone=tone
+        )
+        
+        scenario["outputs"] = variations
+    
+    return scenario
+
+
+def generate_dataset(
+    num_samples: int = 500,
+    use_variation_engine: bool = True,
+    variants_per_scenario: int = 8,
+    seed: Optional[int] = None
+) -> List[Dict[str, str]]:
+    """
+    生成虚拟女友聊天数据集
+    
+    Args:
+        num_samples: 要生成的数据条数
+        use_variation_engine: 是否使用变化引擎生成多样化回复
+        variants_per_scenario: 每个场景生成的变体数量（默认8个）
+        seed: 随机种子，用于确定性生成
+    
+    Returns:
+        数据集列表
+    """
+    if seed is not None:
+        random.seed(seed)
+    
     dataset = []
+    
+    # 初始化变化引擎
+    variation_engine = VariationEngine(seed=seed) if use_variation_engine else None
     
     # 定义各种场景模板和回复模板
     
@@ -378,23 +448,55 @@ def generate_dataset(num_samples: int = 500) -> List[Dict[str, str]]:
     ]
     
     # 组合所有场景
+    base_scenarios = [
+        *morning_scenarios,
+        *goodnight_scenarios,
+        *encouragement_scenarios,
+        *daily_chat_scenarios,
+        *emotional_scenarios,
+        *life_care_scenarios,
+        *praise_scenarios,
+        *weather_scenarios,
+        *health_scenarios,
+        *festival_scenarios,
+        *acting_cute_scenarios,
+        *hobby_scenarios,
+        *love_scenarios,
+        *work_study_scenarios,
+        *food_scenarios,
+        *weather_cold_scenarios
+    ]
+    
+    # 使用变化引擎扩展场景
+    if use_variation_engine:
+        expanded_scenarios = []
+        for scenario in base_scenarios:
+            expanded = expand_scenario_with_variations(
+                scenario,
+                variation_engine,
+                variants_per_scenario
+            )
+            expanded_scenarios.append(expanded)
+        base_scenarios = expanded_scenarios
+    
+    # 根据权重复制场景
     all_scenarios = (
-        morning_scenarios * 20 +
-        goodnight_scenarios * 20 +
-        encouragement_scenarios * 30 +
-        daily_chat_scenarios * 30 +
-        emotional_scenarios * 30 +
-        life_care_scenarios * 25 +
-        praise_scenarios * 25 +
-        weather_scenarios * 20 +
-        health_scenarios * 25 +
-        festival_scenarios * 10 +
-        acting_cute_scenarios * 20 +
-        hobby_scenarios * 20 +
-        love_scenarios * 15 +
-        work_study_scenarios * 25 +
-        food_scenarios * 15 +
-        weather_cold_scenarios * 20
+        [s for s in base_scenarios if s["instruction"] in ["早上问候", "早上刚醒来"]] * 20 +
+        [s for s in base_scenarios if s["instruction"] in ["晚上道别", "很晚了还在工作"]] * 20 +
+        [s for s in base_scenarios if s["instruction"] in ["遇到困难需要鼓励", "考试或面试前紧张"]] * 30 +
+        [s for s in base_scenarios if s["instruction"] in ["分享好心情", "感到无聊"]] * 30 +
+        [s for s in base_scenarios if s["instruction"] in ["心情不好需要安慰", "表达思念"]] * 30 +
+        [s for s in base_scenarios if s["instruction"] in ["提醒吃饭", "提醒喝水"]] * 25 +
+        [s for s in base_scenarios if s["instruction"] in ["完成了某项任务", "用户夸奖女友"]] * 25 +
+        [s for s in base_scenarios if s["instruction"] in ["下雨天提醒", "天气炎热"]] * 20 +
+        [s for s in base_scenarios if s["instruction"] in ["用户说生病了", "熬夜提醒"]] * 25 +
+        [s for s in base_scenarios if s["instruction"] == "生日祝福"] * 10 +
+        [s for s in base_scenarios if s["instruction"] == "想要关注"] * 20 +
+        [s for s in base_scenarios if s["instruction"] in ["聊游戏", "聊动漫"]] * 20 +
+        [s for s in base_scenarios if s["instruction"] == "表达爱意"] * 15 +
+        [s for s in base_scenarios if s["instruction"] in ["学习中", "工作压力大"]] * 25 +
+        [s for s in base_scenarios if s["instruction"] == "聊吃的"] * 15 +
+        [s for s in base_scenarios if s["instruction"] == "天气寒冷"] * 20
     )
     
     # 随机打乱并生成数据
@@ -422,11 +524,31 @@ def generate_dataset(num_samples: int = 500) -> List[Dict[str, str]]:
 
 def main():
     """主函数"""
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='生成虚拟女友聊天数据集')
+    parser.add_argument('--num-samples', type=int, default=500, help='生成的数据条数')
+    parser.add_argument('--no-variation-engine', action='store_true', help='禁用变化引擎（使用原始固定回复）')
+    parser.add_argument('--variants', type=int, default=8, help='每个场景生成的变体数量（默认8）')
+    parser.add_argument('--seed', type=int, default=None, help='随机种子（用于确定性生成）')
+    
+    args = parser.parse_args()
+    
     print("开始生成虚拟女友聊天数据集...")
-    print(f"目标数量: 500条")
+    print(f"目标数量: {args.num_samples}条")
+    print(f"使用变化引擎: {'否' if args.no_variation_engine else '是'}")
+    if not args.no_variation_engine:
+        print(f"每个场景变体数量: {args.variants}个")
+    if args.seed is not None:
+        print(f"随机种子: {args.seed}")
     
     # 生成数据集
-    dataset = generate_dataset(500)
+    dataset = generate_dataset(
+        num_samples=args.num_samples,
+        use_variation_engine=not args.no_variation_engine,
+        variants_per_scenario=args.variants,
+        seed=args.seed
+    )
     
     # 创建输出目录
     import os
