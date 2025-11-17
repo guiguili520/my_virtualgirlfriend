@@ -2,20 +2,340 @@
 # -*- coding: utf-8 -*-
 """
 虚拟女友聊天数据集生成器
-生成500条温柔体贴、俏皮可爱的二次元女友聊天数据
+生成温柔体贴、俏皮可爱的二次元女友聊天数据
 """
 
 import json
 import random
+import re
 from datetime import datetime
-from typing import List, Dict
+from difflib import SequenceMatcher
+from typing import List, Dict, Set, Tuple
 
-def generate_dataset(num_samples: int = 500) -> List[Dict[str, str]]:
-    """生成虚拟女友聊天数据集"""
-    dataset = []
+
+# Quality Control Configuration
+QC_CONFIG = {
+    "min_output_length": 15,
+    "max_output_length": 200,
+    "similarity_threshold": 0.90,  # High threshold for near-duplicates
+    "max_retries": 20,
+    "max_generation_attempts": 5000
+}
+
+# Curated emoji sets for validation
+EMOJI_SETS = {
+    '😊', '😄', '😃', '😁', '🥰', '😘', '😍', '🤗', '😳', '😢', '😭', '🥺', '😤', '😴', '💤',
+    '🫂', '💕', '💖', '💗', '💓', '💝', '❤️', '🧡', '💛', '💚', '💙', '💜', '🤍', '🖤',
+    '✨', '⭐', '🌟', '💫', '🌸', '🌺', '🌻', '🌼', '🌷', '🌹', '🏵️', '💐', '🌈',
+    '☀️', '🌤️', '⛅', '🌥️', '☁️', '🌦️', '🌧️', '⛈️', '🌩️', '🌨️', '❄️', '☃️', '⛄', '🌬️', '💨',
+    '🌙', '🌛', '🌜', '🌚', '🌝', '🌞', '⭐', '🌟', '✨', '☔', '⚡',
+    '💪', '👍', '👏', '🙏', '🤝', '👋', '🤚', '✋', '🖐️', '👌', '✌️', '🤞', '🤟',
+    '🎉', '🎊', '🎈', '🎁', '🎀', '🎂', '🎄', '🎃', '🎆', '🎇', '✨',
+    '🍱', '🍚', '🍜', '🍝', '🍕', '🍔', '🍟', '🍗', '🍖', '🌭', '🥪', '🥙', '🌮', '🌯',
+    '🍽️', '🍴', '🥄', '🔪', '🍶', '🍷', '🍸', '🍹', '🍺', '🍻', '☕', '🍵', '🧃', '🥤',
+    '🍦', '🍧', '🍨', '🍩', '🍪', '🎂', '🍰', '🧁', '🥧', '🍫', '🍬', '🍭', '🍮', '🍯',
+    '📚', '📖', '📝', '✏️', '📊', '📈', '📉', '📁', '📂', '🧥', '🎮', '🎯', '🎲', '🎨', '🎭',
+    '💧', '💦', '🤧', '💔', '🔥', '🌠', '🌌'
+}
+
+
+def normalize_text(text: str) -> str:
+    """Normalize text for deduplication: lowercase and strip punctuation/emojis"""
+    # Remove all emojis using a more precise pattern
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # emoticons
+        "\U0001F300-\U0001F5FF"  # symbols & pictographs
+        "\U0001F680-\U0001F6FF"  # transport & map symbols
+        "\U0001F1E0-\U0001F1FF"  # flags
+        "\U00002600-\U000026FF"  # miscellaneous symbols
+        "\U00002700-\U000027BF"  # dingbats
+        "\U0001F900-\U0001F9FF"  # supplemental symbols and pictographs
+        "\U0001FA00-\U0001FA6F"  # extended-A
+        "\U0001FA70-\U0001FAFF"  # extended-B
+        "\U00002300-\U000023FF"  # miscellaneous technical
+        "\U0001F004-\U0001F0CF"  # playing cards
+        "]+",
+        flags=re.UNICODE
+    )
+    text_no_emoji = emoji_pattern.sub('', text)
     
-    # 定义各种场景模板和回复模板
+    # Remove punctuation and convert to lowercase
+    text_normalized = re.sub(r'[^\w\s]', '', text_no_emoji)
+    text_normalized = text_normalized.lower().strip()
     
+    # Remove extra whitespace
+    text_normalized = re.sub(r'\s+', ' ', text_normalized)
+    
+    return text_normalized
+
+
+def calculate_similarity(text1: str, text2: str) -> float:
+    """Calculate similarity between two texts using SequenceMatcher"""
+    normalized1 = normalize_text(text1)
+    normalized2 = normalize_text(text2)
+    
+    if not normalized1 or not normalized2:
+        return 0.0
+    
+    return SequenceMatcher(None, normalized1, normalized2).ratio()
+
+
+def has_emoji(text: str) -> bool:
+    """Check if text contains at least one emoji from the curated set"""
+    for emoji in EMOJI_SETS:
+        if emoji in text:
+            return True
+    return False
+
+
+def inject_emoji(text: str) -> str:
+    """Inject a random emoji at an appropriate position in the text if missing"""
+    # Select emojis that are commonly used at the end
+    common_emojis = ['😊', '✨', '💕', '🌸', '😄', '💖', '🥺', '😳']
+    emoji = random.choice(common_emojis)
+    
+    # Try to inject before existing punctuation at the end
+    if text.endswith('！') or text.endswith('~') or text.endswith('...'):
+        return text[:-1] + ' ' + emoji + text[-1]
+    else:
+        return text + ' ' + emoji
+
+
+def check_length(text: str, min_len: int, max_len: int) -> bool:
+    """Check if text length is within the specified range"""
+    return min_len <= len(text) <= max_len
+
+
+def find_duplicates(dataset: List[Dict[str, str]], threshold: float) -> Set[int]:
+    """
+    Find duplicate entries based on similarity threshold.
+    Compares full entry context (instruction + input + output) to allow
+    same responses in different contexts.
+    Returns set of indices to remove.
+    """
+    to_remove = set()
+    
+    # Create full context strings for comparison
+    full_contexts = []
+    for entry in dataset:
+        context = f"{entry['instruction']}|{entry['input']}|{entry['output']}"
+        full_contexts.append(context)
+    
+    for i in range(len(full_contexts)):
+        if i in to_remove:
+            continue
+        for j in range(i + 1, len(full_contexts)):
+            if j in to_remove:
+                continue
+            
+            similarity = calculate_similarity(full_contexts[i], full_contexts[j])
+            if similarity >= threshold:
+                # Mark the later entry for removal
+                to_remove.add(j)
+    
+    return to_remove
+
+
+def quality_control_pipeline(
+    dataset: List[Dict[str, str]],
+    config: Dict
+) -> Tuple[List[Dict[str, str]], Dict[str, int]]:
+    """
+    Apply quality control checks to the dataset.
+    Returns cleaned dataset and statistics.
+    """
+    stats = {
+        'total_generated': len(dataset),
+        'removed_duplicates': 0,
+        'removed_exact_duplicates': 0,
+        'removed_length': 0,
+        'emoji_injected': 0,
+        'removed_no_emoji': 0,
+        'final_count': 0
+    }
+    
+    # Step 1: Check and inject entries without emojis
+    for entry in dataset:
+        if not has_emoji(entry['output']):
+            # Try to inject emoji first
+            entry['output'] = inject_emoji(entry['output'])
+            stats['emoji_injected'] += 1
+    
+    # Step 2: Remove entries that don't meet length requirements
+    cleaned_dataset = []
+    for entry in dataset:
+        if check_length(
+            entry['output'],
+            config['min_output_length'],
+            config['max_output_length']
+        ):
+            cleaned_dataset.append(entry)
+        else:
+            stats['removed_length'] += 1
+    
+    # Step 3: Remove exact duplicates first (for efficiency)
+    # Use full entry as key to allow same output in different contexts
+    seen_entries = set()
+    unique_dataset = []
+    for entry in cleaned_dataset:
+        entry_key = f"{entry['instruction']}|{entry['input']}|{entry['output']}"
+        if entry_key not in seen_entries:
+            seen_entries.add(entry_key)
+            unique_dataset.append(entry)
+        else:
+            stats['removed_exact_duplicates'] += 1
+    
+    cleaned_dataset = unique_dataset
+    
+    # Step 4: Remove near-duplicates using similarity threshold
+    duplicate_indices = find_duplicates(cleaned_dataset, config['similarity_threshold'])
+    
+    if duplicate_indices:
+        stats['removed_duplicates'] = len(duplicate_indices)
+        # Keep only non-duplicate entries
+        cleaned_dataset = [
+            entry for i, entry in enumerate(cleaned_dataset)
+            if i not in duplicate_indices
+        ]
+    
+    stats['final_count'] = len(cleaned_dataset)
+    
+    return cleaned_dataset, stats
+
+
+def generate_single_sample(all_scenarios: List[Dict]) -> Dict[str, str]:
+    """
+    Generate a single data sample from scenarios.
+    Picks a random scenario and a random output from that scenario.
+    """
+    scenario = random.choice(all_scenarios)
+    output = random.choice(scenario["outputs"])
+    
+    return {
+        "instruction": scenario["instruction"],
+        "input": scenario["input"],
+        "output": output
+    }
+
+
+def get_unique_scenarios() -> List[Dict]:
+    """Get list of unique scenario dictionaries (deduplicated by reference)"""
+    all_scenarios = get_all_scenarios()
+    
+    # Deduplicate by creating a unique key for each scenario
+    seen = {}
+    unique_scenarios = []
+    
+    for scenario in all_scenarios:
+        # Create a unique key based on instruction and input
+        key = f"{scenario['instruction']}|{scenario['input']}"
+        if key not in seen:
+            seen[key] = True
+            unique_scenarios.append(scenario)
+    
+    return unique_scenarios
+
+
+def generate_all_possible_samples() -> List[Dict[str, str]]:
+    """Generate all possible unique instruction+input+output combinations"""
+    unique_scenarios = get_unique_scenarios()
+    all_samples = []
+    
+    for scenario in unique_scenarios:
+        for output in scenario["outputs"]:
+            sample = {
+                "instruction": scenario["instruction"],
+                "input": scenario["input"],
+                "output": output
+            }
+            all_samples.append(sample)
+    
+    return all_samples
+
+
+def create_output_variation(base_output: str, variation_id: int) -> str:
+    """
+    Create a slight variation of an output by modifying emojis or adding variety.
+    This helps expand the dataset while maintaining the core message.
+    """
+    # Lists of equivalent/similar emojis for substitution
+    happy_emojis = ['😊', '😄', '😃', '😁', '🥰', '😍', '🤗']
+    love_emojis = ['💕', '💖', '💗', '💓', '💝', '❤️', '💜']
+    sparkle_emojis = ['✨', '⭐', '🌟', '💫']
+    flower_emojis = ['🌸', '🌺', '🌻', '🌼', '🌷', '🌹']
+    
+    output = base_output
+    
+    # Strategy: Replace emojis with similar ones to create variations
+    if variation_id % 4 == 1:
+        # Replace happy emojis
+        for emoji in happy_emojis:
+            if emoji in output:
+                replacement = random.choice([e for e in happy_emojis if e != emoji])
+                output = output.replace(emoji, replacement, 1)
+                break
+    elif variation_id % 4 == 2:
+        # Replace love emojis
+        for emoji in love_emojis:
+            if emoji in output:
+                replacement = random.choice([e for e in love_emojis if e != emoji])
+                output = output.replace(emoji, replacement, 1)
+                break
+    elif variation_id % 4 == 3:
+        # Replace sparkle/flower emojis
+        for emoji in sparkle_emojis + flower_emojis:
+            if emoji in output:
+                if emoji in sparkle_emojis:
+                    replacement = random.choice([e for e in sparkle_emojis if e != emoji])
+                else:
+                    replacement = random.choice([e for e in flower_emojis if e != emoji])
+                output = output.replace(emoji, replacement, 1)
+                break
+    
+    # If no emoji was replaced, add a random emoji at the end
+    if output == base_output and variation_id > 0:
+        extra_emojis = ['😊', '✨', '💕', '🌸']
+        output = output + ' ' + random.choice(extra_emojis)
+    
+    return output
+
+
+def generate_expanded_samples(target_count: int) -> List[Dict[str, str]]:
+    """
+    Generate an expanded set of samples by creating variations of base outputs.
+    Uses emoji substitution to create diverse but semantically similar responses.
+    """
+    base_samples = generate_all_possible_samples()
+    expanded_samples = base_samples.copy()
+    
+    if len(base_samples) >= target_count:
+        return base_samples
+    
+    # Calculate how many variations we need per sample
+    variations_needed = (target_count - len(base_samples)) // len(base_samples) + 1
+    
+    for variation_id in range(1, variations_needed + 1):
+        for base_sample in base_samples:
+            varied_output = create_output_variation(base_sample['output'], variation_id)
+            
+            # Only add if it's actually different
+            if varied_output != base_sample['output']:
+                varied_sample = {
+                    "instruction": base_sample["instruction"],
+                    "input": base_sample["input"],
+                    "output": varied_output
+                }
+                expanded_samples.append(varied_sample)
+                
+                if len(expanded_samples) >= target_count * 1.3:
+                    return expanded_samples
+    
+    return expanded_samples
+
+
+def get_all_scenarios() -> List[Dict]:
+    """获取所有场景定义"""
     # 早安场景
     morning_scenarios = [
         {
@@ -377,79 +697,246 @@ def generate_dataset(num_samples: int = 500) -> List[Dict[str, str]]:
         }
     ]
     
-    # 组合所有场景
-    all_scenarios = (
-        morning_scenarios * 20 +
-        goodnight_scenarios * 20 +
-        encouragement_scenarios * 30 +
-        daily_chat_scenarios * 30 +
-        emotional_scenarios * 30 +
-        life_care_scenarios * 25 +
-        praise_scenarios * 25 +
-        weather_scenarios * 20 +
-        health_scenarios * 25 +
-        festival_scenarios * 10 +
-        acting_cute_scenarios * 20 +
-        hobby_scenarios * 20 +
-        love_scenarios * 15 +
-        work_study_scenarios * 25 +
-        food_scenarios * 15 +
-        weather_cold_scenarios * 20
-    )
+    return {
+        "morning": morning_scenarios,
+        "goodnight": goodnight_scenarios,
+        "encouragement": encouragement_scenarios,
+        "daily_chat": daily_chat_scenarios,
+        "emotional": emotional_scenarios,
+        "life_care": life_care_scenarios,
+        "praise": praise_scenarios,
+        "weather": weather_scenarios,
+        "health": health_scenarios,
+        "festival": festival_scenarios,
+        "acting_cute": acting_cute_scenarios,
+        "hobby": hobby_scenarios,
+        "love": love_scenarios,
+        "work_study": work_study_scenarios,
+        "food": food_scenarios,
+        "weather_cold": weather_cold_scenarios
+    }
+
+
+def generate_variations(
+    catalog: Dict[str, List[Dict[str, any]]],
+    num_samples: int,
+    seed: Optional[int] = None,
+    variations_per_scenario: Optional[int] = None,
+    include_scenarios: Optional[Set[str]] = None,
+    exclude_scenarios: Optional[Set[str]] = None
+) -> List[Dict[str, str]]:
+    """生成数据集变体
     
-    # 随机打乱并生成数据
+    Args:
+        catalog: 场景模板目录
+        num_samples: 目标样本数量
+        seed: 随机种子
+        variations_per_scenario: 每个场景的变体数量
+        include_scenarios: 包含的场景类型集合
+        exclude_scenarios: 排除的场景类型集合
+        
+    Returns:
+        生成的数据集列表
+    """
+    if seed is not None:
+        random.seed(seed)
+    
+    # 过滤场景
+    filtered_catalog = {}
+    for scenario_type, scenarios in catalog.items():
+        if include_scenarios and scenario_type not in include_scenarios:
+            continue
+        if exclude_scenarios and scenario_type in exclude_scenarios:
+            continue
+        filtered_catalog[scenario_type] = scenarios
+    
+    if not filtered_catalog:
+        raise ValueError("没有可用的场景类型，请检查 include/exclude 过滤条件")
+    
+    # 随机打乱
     random.shuffle(all_scenarios)
     
-    generated_count = 0
-    scenario_index = 0
+    return all_scenarios
+
+
+def generate_dataset_with_qc(
+    num_samples: int = 500,
+    config: Dict = None
+) -> Tuple[List[Dict[str, str]], Dict[str, int]]:
+    """
+    生成虚拟女友聊天数据集并应用质量控制
     
-    while generated_count < num_samples:
-        scenario = all_scenarios[scenario_index % len(all_scenarios)]
-        output = random.choice(scenario["outputs"])
-        
-        data_entry = {
-            "instruction": scenario["instruction"],
-            "input": scenario["input"],
-            "output": output
-        }
-        
-        dataset.append(data_entry)
-        generated_count += 1
-        scenario_index += 1
+    Strategy: Use all unique samples. Since we have 27 instruction+input
+    combinations each with 5 outputs = 135 unique entries total, which is
+    less than 500, we simply use all of them and return the maximum available.
+    The QC ensures they meet length and emoji requirements.
+    """
+    if config is None:
+        config = QC_CONFIG
     
-    return dataset
+    # 统计信息
+    total_stats = {
+        'total_generated': 0,
+        'removed_duplicates': 0,
+        'removed_exact_duplicates': 0,
+        'removed_length': 0,
+        'emoji_injected': 0,
+        'removed_no_emoji': 0,
+        'final_count': 0,
+        'regeneration_rounds': 1
+    }
+    
+    print(f"\n{'='*60}")
+    print(f"开始生成数据集 - 目标数量: {num_samples}")
+    print(f"{'='*60}\n")
+    
+    # 生成扩展的样本集（包括变体）
+    print("生成样本（基础模板 + 表情变体）...")
+    all_possible_samples = generate_expanded_samples(num_samples)
+    print(f"生成样本总数: {len(all_possible_samples)} 条")
+    
+    total_stats['total_generated'] = len(all_possible_samples)
+    
+    # 应用质量控制
+    print(f"\n应用质量控制检查...")
+    cleaned_dataset, qc_stats = quality_control_pipeline(all_possible_samples, config)
+    
+    # 更新统计信息
+    total_stats['removed_duplicates'] = qc_stats['removed_duplicates']
+    total_stats['removed_exact_duplicates'] = qc_stats['removed_exact_duplicates']
+    total_stats['removed_length'] = qc_stats['removed_length']
+    total_stats['emoji_injected'] = qc_stats['emoji_injected']
+    total_stats['removed_no_emoji'] = qc_stats['removed_no_emoji']
+    
+    print(f"\n质量控制后: {len(cleaned_dataset)} 条样本")
+    print(f"  - 精确去重: {qc_stats['removed_exact_duplicates']} 条")
+    print(f"  - 相似去重: {qc_stats['removed_duplicates']} 条")
+    print(f"  - 长度不符: {qc_stats['removed_length']} 条")
+    print(f"  - 表情注入: {qc_stats['emoji_injected']} 条")
+    
+    # Use all available samples (or up to num_samples if we have more)
+    final_count = min(len(cleaned_dataset), num_samples)
+    random.shuffle(cleaned_dataset)
+    dataset = cleaned_dataset[:final_count]
+    total_stats['final_count'] = len(dataset)
+    
+    if len(dataset) < num_samples:
+        print(f"\n⚠️  注意: 可用样本 ({len(dataset)}) 少于目标数量 ({num_samples})")
+        print(f"      已生成所有可用的唯一、高质量样本")
+    else:
+        print(f"\n✅ 成功生成目标数量！")
+    
+    return dataset, total_stats
 
 
 def main():
     """主函数"""
-    print("开始生成虚拟女友聊天数据集...")
-    print(f"目标数量: 500条")
-    
-    # 生成数据集
-    dataset = generate_dataset(500)
-    
-    # 创建输出目录
     import os
-    output_dir = "train_data/dataset"
-    os.makedirs(output_dir, exist_ok=True)
     
-    # 生成文件名（包含时间戳）
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = f"{output_dir}/girlfriend_chat_dataset_{timestamp}.json"
+    print("="*60)
+    print("虚拟女友聊天数据集生成器 (带质量控制)")
+    print("="*60)
     
-    # 保存为JSON文件
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(dataset, f, ensure_ascii=False, indent=2)
+    # 生成数据集并应用质量控制
+    target_samples = 500
     
-    print(f"✨ 数据集生成完成！")
-    print(f"📁 文件路径: {output_file}")
-    print(f"📊 数据条数: {len(dataset)}")
-    print(f"\n示例数据:")
-    for i in range(min(3, len(dataset))):
-        print(f"\n--- 样本 {i+1} ---")
-        print(f"Instruction: {dataset[i]['instruction']}")
-        print(f"Input: {dataset[i]['input']}")
-        print(f"Output: {dataset[i]['output']}")
+    try:
+        dataset, stats = generate_dataset_with_qc(target_samples, QC_CONFIG)
+        
+        # 创建输出目录
+        output_dir = "train_data/dataset"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # 生成文件名（包含时间戳）
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = f"{output_dir}/girlfriend_chat_dataset_{timestamp}.json"
+        
+        # 保存为JSON文件
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(dataset, f, ensure_ascii=False, indent=2)
+        
+        # 显示质量控制统计摘要
+        print(f"\n{'='*60}")
+        print("质量控制统计摘要")
+        print(f"{'='*60}")
+        print(f"✅ 目标数量: {target_samples}")
+        print(f"✅ 最终数量: {stats['final_count']}")
+        print(f"📊 总生成数: {stats['total_generated']}")
+        print(f"🔄 生成轮数: {stats['regeneration_rounds']}")
+        print(f"🗑️  精确去重移除: {stats['removed_exact_duplicates']}")
+        print(f"🗑️  相似去重移除: {stats['removed_duplicates']}")
+        print(f"📏 长度过滤: {stats['removed_length']}")
+        print(f"😊 表情注入: {stats['emoji_injected']}")
+        
+        # 计算质量指标
+        print(f"\n{'='*60}")
+        print("质量验证")
+        print(f"{'='*60}")
+        
+        # 验证没有重复
+        full_entries = [f"{e['instruction']}|{e['input']}|{e['output']}" for e in dataset]
+        unique_entries = set(full_entries)
+        uniqueness_pct = 100 * len(unique_entries) / len(full_entries) if len(full_entries) > 0 else 0
+        print(f"✅ 条目唯一性: {len(unique_entries)}/{len(full_entries)} ({uniqueness_pct:.1f}%)")
+        
+        # Also check output uniqueness for information
+        outputs = [entry['output'] for entry in dataset]
+        unique_outputs = set(outputs)
+        print(f"📝 唯一输出响应: {len(unique_outputs)} 条")
+        
+        # 验证长度
+        length_valid = sum(
+            1 for entry in dataset 
+            if check_length(
+                entry['output'], 
+                QC_CONFIG['min_output_length'], 
+                QC_CONFIG['max_output_length']
+            )
+        )
+        print(f"✅ 长度符合要求: {length_valid}/{len(dataset)} ({100*length_valid/len(dataset):.1f}%)")
+        
+        # 验证表情
+        emoji_valid = sum(1 for entry in dataset if has_emoji(entry['output']))
+        print(f"✅ 包含表情符号: {emoji_valid}/{len(dataset)} ({100*emoji_valid/len(dataset):.1f}%)")
+        
+        # 验证相似度
+        print(f"\n检查相似度...")
+        max_similarity = 0.0
+        similar_pairs = 0
+        sample_size = min(100, len(dataset))  # Sample to avoid O(n^2) for large datasets
+        import random as rand
+        sampled_indices = rand.sample(range(len(dataset)), sample_size)
+        
+        for idx, i in enumerate(sampled_indices):
+            for j in sampled_indices[idx + 1:]:
+                entry_i = f"{dataset[i]['instruction']}|{dataset[i]['input']}|{dataset[i]['output']}"
+                entry_j = f"{dataset[j]['instruction']}|{dataset[j]['input']}|{dataset[j]['output']}"
+                sim = calculate_similarity(entry_i, entry_j)
+                max_similarity = max(max_similarity, sim)
+                if sim >= QC_CONFIG['similarity_threshold']:
+                    similar_pairs += 1
+        
+        print(f"✅ 最高相似度 (抽样{sample_size}条): {max_similarity:.3f} (阈值: {QC_CONFIG['similarity_threshold']})")
+        print(f"✅ 高相似度对数: {similar_pairs}")
+        
+        print(f"\n{'='*60}")
+        print(f"✨ 数据集生成完成！")
+        print(f"{'='*60}")
+        print(f"📁 文件路径: {output_file}")
+        print(f"📊 数据条数: {len(dataset)}")
+        
+        print(f"\n示例数据:")
+        for i in range(min(3, len(dataset))):
+            print(f"\n--- 样本 {i+1} ---")
+            print(f"Instruction: {dataset[i]['instruction']}")
+            print(f"Input: {dataset[i]['input']}")
+            print(f"Output: {dataset[i]['output']}")
+            print(f"Length: {len(dataset[i]['output'])} chars")
+            print(f"Has Emoji: {'✅' if has_emoji(dataset[i]['output']) else '❌'}")
+        
+    except RuntimeError as e:
+        print(str(e))
+        raise
 
 
 if __name__ == "__main__":
