@@ -2,19 +2,20 @@
 # -*- coding: utf-8 -*-
 """
 虚拟女友聊天数据集生成器
-生成500条温柔体贴、俏皮可爱的二次元女友聊天数据
+生成温柔体贴、俏皮可爱的二次元女友聊天数据
 """
 
 import json
 import random
+import os
+import argparse
+import re
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional, Set
 
-def generate_dataset(num_samples: int = 500) -> List[Dict[str, str]]:
-    """生成虚拟女友聊天数据集"""
-    dataset = []
-    
-    # 定义各种场景模板和回复模板
+
+def load_catalog() -> Dict[str, List[Dict[str, any]]]:
+    """加载所有场景模板目录"""
     
     # 早安场景
     morning_scenarios = [
@@ -377,33 +378,98 @@ def generate_dataset(num_samples: int = 500) -> List[Dict[str, str]]:
         }
     ]
     
-    # 组合所有场景
-    all_scenarios = (
-        morning_scenarios * 20 +
-        goodnight_scenarios * 20 +
-        encouragement_scenarios * 30 +
-        daily_chat_scenarios * 30 +
-        emotional_scenarios * 30 +
-        life_care_scenarios * 25 +
-        praise_scenarios * 25 +
-        weather_scenarios * 20 +
-        health_scenarios * 25 +
-        festival_scenarios * 10 +
-        acting_cute_scenarios * 20 +
-        hobby_scenarios * 20 +
-        love_scenarios * 15 +
-        work_study_scenarios * 25 +
-        food_scenarios * 15 +
-        weather_cold_scenarios * 20
-    )
+    return {
+        "morning": morning_scenarios,
+        "goodnight": goodnight_scenarios,
+        "encouragement": encouragement_scenarios,
+        "daily_chat": daily_chat_scenarios,
+        "emotional": emotional_scenarios,
+        "life_care": life_care_scenarios,
+        "praise": praise_scenarios,
+        "weather": weather_scenarios,
+        "health": health_scenarios,
+        "festival": festival_scenarios,
+        "acting_cute": acting_cute_scenarios,
+        "hobby": hobby_scenarios,
+        "love": love_scenarios,
+        "work_study": work_study_scenarios,
+        "food": food_scenarios,
+        "weather_cold": weather_cold_scenarios
+    }
+
+
+def generate_variations(
+    catalog: Dict[str, List[Dict[str, any]]],
+    num_samples: int,
+    seed: Optional[int] = None,
+    variations_per_scenario: Optional[int] = None,
+    include_scenarios: Optional[Set[str]] = None,
+    exclude_scenarios: Optional[Set[str]] = None
+) -> List[Dict[str, str]]:
+    """生成数据集变体
     
-    # 随机打乱并生成数据
+    Args:
+        catalog: 场景模板目录
+        num_samples: 目标样本数量
+        seed: 随机种子
+        variations_per_scenario: 每个场景的变体数量
+        include_scenarios: 包含的场景类型集合
+        exclude_scenarios: 排除的场景类型集合
+        
+    Returns:
+        生成的数据集列表
+    """
+    if seed is not None:
+        random.seed(seed)
+    
+    # 过滤场景
+    filtered_catalog = {}
+    for scenario_type, scenarios in catalog.items():
+        if include_scenarios and scenario_type not in include_scenarios:
+            continue
+        if exclude_scenarios and scenario_type in exclude_scenarios:
+            continue
+        filtered_catalog[scenario_type] = scenarios
+    
+    if not filtered_catalog:
+        raise ValueError("没有可用的场景类型，请检查 include/exclude 过滤条件")
+    
+    # 根据场景类型的重要性分配权重
+    scenario_weights = {
+        "morning": 20,
+        "goodnight": 20,
+        "encouragement": 30,
+        "daily_chat": 30,
+        "emotional": 30,
+        "life_care": 25,
+        "praise": 25,
+        "weather": 20,
+        "health": 25,
+        "festival": 10,
+        "acting_cute": 20,
+        "hobby": 20,
+        "love": 15,
+        "work_study": 25,
+        "food": 15,
+        "weather_cold": 20
+    }
+    
+    # 组合所有场景（根据权重）
+    all_scenarios = []
+    for scenario_type, scenarios in filtered_catalog.items():
+        weight = scenario_weights.get(scenario_type, 10)
+        if variations_per_scenario is not None:
+            weight = variations_per_scenario
+        all_scenarios.extend(scenarios * weight)
+    
+    # 随机打乱
     random.shuffle(all_scenarios)
     
-    generated_count = 0
+    # 生成数据集
+    dataset = []
     scenario_index = 0
     
-    while generated_count < num_samples:
+    for i in range(num_samples):
         scenario = all_scenarios[scenario_index % len(all_scenarios)]
         output = random.choice(scenario["outputs"])
         
@@ -414,42 +480,336 @@ def generate_dataset(num_samples: int = 500) -> List[Dict[str, str]]:
         }
         
         dataset.append(data_entry)
-        generated_count += 1
         scenario_index += 1
     
     return dataset
 
 
-def main():
-    """主函数"""
-    print("开始生成虚拟女友聊天数据集...")
-    print(f"目标数量: 500条")
+def apply_qc(
+    dataset: List[Dict[str, str]],
+    emoji_threshold: float = 0.0,
+    min_length: Optional[int] = None,
+    max_length: Optional[int] = None
+) -> List[Dict[str, str]]:
+    """应用质量控制过滤
     
-    # 生成数据集
-    dataset = generate_dataset(500)
+    Args:
+        dataset: 原始数据集
+        emoji_threshold: emoji覆盖率阈值（0.0-1.0）
+        min_length: 最小输出长度
+        max_length: 最大输出长度
+        
+    Returns:
+        过滤后的数据集
+    """
+    # emoji正则表达式
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # 表情符号
+        "\U0001F300-\U0001F5FF"  # 符号和象形文字
+        "\U0001F680-\U0001F6FF"  # 交通和地图符号
+        "\U0001F1E0-\U0001F1FF"  # 旗帜
+        "\U00002702-\U000027B0"
+        "\U000024C2-\U0001F251"
+        "]+",
+        flags=re.UNICODE
+    )
     
-    # 创建输出目录
-    import os
-    output_dir = "train_data/dataset"
+    filtered_dataset = []
+    for entry in dataset:
+        output = entry["output"]
+        
+        # 长度检查
+        if min_length and len(output) < min_length:
+            continue
+        if max_length and len(output) > max_length:
+            continue
+        
+        # emoji检查
+        has_emoji = bool(emoji_pattern.search(output))
+        if emoji_threshold > 0.0 and not has_emoji:
+            continue
+        
+        filtered_dataset.append(entry)
+    
+    # 如果emoji阈值过滤太严格，计算实际emoji覆盖率
+    if emoji_threshold > 0.0 and len(filtered_dataset) < len(dataset) * emoji_threshold:
+        # 放宽过滤，返回原数据集
+        print(f"⚠️  警告: emoji过滤后样本不足，保留所有样本")
+        return dataset
+    
+    return filtered_dataset
+
+
+def write_json(
+    dataset: List[Dict[str, str]],
+    output_dir: str,
+    output_prefix: str = "girlfriend_chat_dataset"
+) -> str:
+    """将数据集写入JSON文件
+    
+    Args:
+        dataset: 数据集
+        output_dir: 输出目录
+        output_prefix: 输出文件前缀
+        
+    Returns:
+        输出文件路径
+    """
+    # 确保输出目录存在
     os.makedirs(output_dir, exist_ok=True)
     
     # 生成文件名（包含时间戳）
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = f"{output_dir}/girlfriend_chat_dataset_{timestamp}.json"
+    output_file = os.path.join(output_dir, f"{output_prefix}_{timestamp}.json")
     
     # 保存为JSON文件
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(dataset, f, ensure_ascii=False, indent=2)
     
-    print(f"✨ 数据集生成完成！")
-    print(f"📁 文件路径: {output_file}")
-    print(f"📊 数据条数: {len(dataset)}")
-    print(f"\n示例数据:")
+    return output_file
+
+
+def print_summary(
+    dataset: List[Dict[str, str]],
+    output_file: str,
+    params: Dict[str, any]
+):
+    """打印生成摘要
+    
+    Args:
+        dataset: 生成的数据集
+        output_file: 输出文件路径
+        params: 生成参数
+    """
+    print("\n" + "="*60)
+    print("✨ 数据集生成完成！")
+    print("="*60)
+    
+    print("\n📋 生成参数:")
+    print(f"  目标样本数: {params.get('num_samples', 'N/A')}")
+    if params.get('seed') is not None:
+        print(f"  随机种子: {params['seed']}")
+    if params.get('variations_per_scenario'):
+        print(f"  每场景变体数: {params['variations_per_scenario']}")
+    if params.get('emoji_threshold', 0.0) > 0.0:
+        print(f"  Emoji阈值: {params['emoji_threshold']:.1%}")
+    if params.get('min_length'):
+        print(f"  最小长度: {params['min_length']}")
+    if params.get('max_length'):
+        print(f"  最大长度: {params['max_length']}")
+    if params.get('include_scenarios'):
+        print(f"  包含场景: {', '.join(params['include_scenarios'])}")
+    if params.get('exclude_scenarios'):
+        print(f"  排除场景: {', '.join(params['exclude_scenarios'])}")
+    
+    print(f"\n📁 输出信息:")
+    print(f"  文件路径: {output_file}")
+    print(f"  实际生成: {len(dataset)} 条")
+    
+    # 计算emoji覆盖率
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"
+        "\U0001F300-\U0001F5FF"
+        "\U0001F680-\U0001F6FF"
+        "\U0001F1E0-\U0001F1FF"
+        "\U00002702-\U000027B0"
+        "\U000024C2-\U0001F251"
+        "]+",
+        flags=re.UNICODE
+    )
+    
+    emoji_count = sum(1 for entry in dataset if emoji_pattern.search(entry["output"]))
+    emoji_coverage = emoji_count / len(dataset) * 100 if dataset else 0
+    
+    print(f"\n📊 质量指标:")
+    print(f"  Emoji覆盖率: {emoji_coverage:.1f}%")
+    print(f"  平均输出长度: {sum(len(e['output']) for e in dataset) / len(dataset):.1f} 字符")
+    
+    print(f"\n💡 示例数据:")
     for i in range(min(3, len(dataset))):
-        print(f"\n--- 样本 {i+1} ---")
-        print(f"Instruction: {dataset[i]['instruction']}")
-        print(f"Input: {dataset[i]['input']}")
-        print(f"Output: {dataset[i]['output']}")
+        print(f"\n  --- 样本 {i+1} ---")
+        print(f"  Instruction: {dataset[i]['instruction']}")
+        print(f"  Input: {dataset[i]['input'] if dataset[i]['input'] else '(空)'}")
+        print(f"  Output: {dataset[i]['output']}")
+    
+    print("\n" + "="*60)
+
+
+def parse_args():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(
+        description="虚拟女友聊天数据集生成器 - 生成温柔体贴、俏皮可爱的二次元女友聊天数据",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例用法:
+  # 使用默认参数生成500条样本
+  python generate_girlfriend_dataset.py
+  
+  # 生成1000条样本到自定义目录
+  python generate_girlfriend_dataset.py --size 1000 --output-dir ./my_data
+  
+  # 使用随机种子以便复现结果
+  python generate_girlfriend_dataset.py --seed 42
+  
+  # 只包含特定场景类型
+  python generate_girlfriend_dataset.py --include-scenarios morning,goodnight,love
+  
+  # 排除特定场景类型
+  python generate_girlfriend_dataset.py --exclude-scenarios festival,weather
+  
+  # 应用质量控制过滤
+  python generate_girlfriend_dataset.py --emoji-threshold 0.95 --min-length 20
+
+可用的场景类型:
+  morning, goodnight, encouragement, daily_chat, emotional, life_care,
+  praise, weather, health, festival, acting_cute, hobby, love,
+  work_study, food, weather_cold
+        """
+    )
+    
+    parser.add_argument(
+        '-s', '--size',
+        type=int,
+        default=500,
+        help='生成的样本数量 (默认: 500)'
+    )
+    
+    parser.add_argument(
+        '-o', '--output-dir',
+        type=str,
+        default='train_data/dataset',
+        help='输出目录路径 (默认: train_data/dataset)'
+    )
+    
+    parser.add_argument(
+        '-p', '--output-prefix',
+        type=str,
+        default='girlfriend_chat_dataset',
+        help='输出文件名前缀 (默认: girlfriend_chat_dataset)'
+    )
+    
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=None,
+        help='随机种子，用于复现结果 (默认: None)'
+    )
+    
+    parser.add_argument(
+        '--variations',
+        type=int,
+        default=None,
+        help='每个场景的变体数量，覆盖默认权重 (默认: None)'
+    )
+    
+    parser.add_argument(
+        '--emoji-threshold',
+        type=float,
+        default=0.0,
+        help='Emoji覆盖率阈值 0.0-1.0，过滤没有emoji的回复 (默认: 0.0，不过滤)'
+    )
+    
+    parser.add_argument(
+        '--min-length',
+        type=int,
+        default=None,
+        help='输出的最小字符长度 (默认: None)'
+    )
+    
+    parser.add_argument(
+        '--max-length',
+        type=int,
+        default=None,
+        help='输出的最大字符长度 (默认: None)'
+    )
+    
+    parser.add_argument(
+        '--include-scenarios',
+        type=str,
+        default=None,
+        help='包含的场景类型，逗号分隔 (例如: morning,goodnight,love)'
+    )
+    
+    parser.add_argument(
+        '--exclude-scenarios',
+        type=str,
+        default=None,
+        help='排除的场景类型，逗号分隔 (例如: festival,weather)'
+    )
+    
+    return parser.parse_args()
+
+
+def main():
+    """主函数 - CLI入口点"""
+    args = parse_args()
+    
+    # 解析场景过滤器
+    include_scenarios = None
+    if args.include_scenarios:
+        include_scenarios = set(s.strip() for s in args.include_scenarios.split(','))
+    
+    exclude_scenarios = None
+    if args.exclude_scenarios:
+        exclude_scenarios = set(s.strip() for s in args.exclude_scenarios.split(','))
+    
+    print("开始生成虚拟女友聊天数据集...")
+    print(f"目标数量: {args.size}条")
+    
+    # 1. 加载场景目录
+    print("\n📚 加载场景模板...")
+    catalog = load_catalog()
+    available_scenarios = list(catalog.keys())
+    print(f"  可用场景类型: {len(available_scenarios)} 个")
+    
+    # 2. 生成变体
+    print("\n🎲 生成数据变体...")
+    dataset = generate_variations(
+        catalog=catalog,
+        num_samples=args.size,
+        seed=args.seed,
+        variations_per_scenario=args.variations,
+        include_scenarios=include_scenarios,
+        exclude_scenarios=exclude_scenarios
+    )
+    print(f"  初始生成: {len(dataset)} 条")
+    
+    # 3. 应用质量控制
+    if args.emoji_threshold > 0.0 or args.min_length or args.max_length:
+        print("\n🔍 应用质量控制...")
+        original_count = len(dataset)
+        dataset = apply_qc(
+            dataset=dataset,
+            emoji_threshold=args.emoji_threshold,
+            min_length=args.min_length,
+            max_length=args.max_length
+        )
+        if len(dataset) < original_count:
+            print(f"  过滤后: {len(dataset)} 条 (移除 {original_count - len(dataset)} 条)")
+    
+    # 4. 写入JSON文件
+    print("\n💾 保存数据集...")
+    output_file = write_json(
+        dataset=dataset,
+        output_dir=args.output_dir,
+        output_prefix=args.output_prefix
+    )
+    
+    # 5. 打印摘要
+    params = {
+        'num_samples': args.size,
+        'seed': args.seed,
+        'variations_per_scenario': args.variations,
+        'emoji_threshold': args.emoji_threshold,
+        'min_length': args.min_length,
+        'max_length': args.max_length,
+        'include_scenarios': include_scenarios,
+        'exclude_scenarios': exclude_scenarios
+    }
+    
+    print_summary(dataset, output_file, params)
 
 
 if __name__ == "__main__":
