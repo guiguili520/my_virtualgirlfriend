@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 虚拟女友聊天数据集生成器
-生成500条温柔体贴、俏皮可爱的二次元女友聊天数据
+生成温柔体贴、俏皮可爱的二次元女友聊天数据
 """
 
 import json
@@ -697,25 +697,61 @@ def get_all_scenarios() -> List[Dict]:
         }
     ]
     
-    # 组合所有场景
-    all_scenarios = (
-        morning_scenarios * 20 +
-        goodnight_scenarios * 20 +
-        encouragement_scenarios * 30 +
-        daily_chat_scenarios * 30 +
-        emotional_scenarios * 30 +
-        life_care_scenarios * 25 +
-        praise_scenarios * 25 +
-        weather_scenarios * 20 +
-        health_scenarios * 25 +
-        festival_scenarios * 10 +
-        acting_cute_scenarios * 20 +
-        hobby_scenarios * 20 +
-        love_scenarios * 15 +
-        work_study_scenarios * 25 +
-        food_scenarios * 15 +
-        weather_cold_scenarios * 20
-    )
+    return {
+        "morning": morning_scenarios,
+        "goodnight": goodnight_scenarios,
+        "encouragement": encouragement_scenarios,
+        "daily_chat": daily_chat_scenarios,
+        "emotional": emotional_scenarios,
+        "life_care": life_care_scenarios,
+        "praise": praise_scenarios,
+        "weather": weather_scenarios,
+        "health": health_scenarios,
+        "festival": festival_scenarios,
+        "acting_cute": acting_cute_scenarios,
+        "hobby": hobby_scenarios,
+        "love": love_scenarios,
+        "work_study": work_study_scenarios,
+        "food": food_scenarios,
+        "weather_cold": weather_cold_scenarios
+    }
+
+
+def generate_variations(
+    catalog: Dict[str, List[Dict[str, any]]],
+    num_samples: int,
+    seed: Optional[int] = None,
+    variations_per_scenario: Optional[int] = None,
+    include_scenarios: Optional[Set[str]] = None,
+    exclude_scenarios: Optional[Set[str]] = None
+) -> List[Dict[str, str]]:
+    """生成数据集变体
+    
+    Args:
+        catalog: 场景模板目录
+        num_samples: 目标样本数量
+        seed: 随机种子
+        variations_per_scenario: 每个场景的变体数量
+        include_scenarios: 包含的场景类型集合
+        exclude_scenarios: 排除的场景类型集合
+        
+    Returns:
+        生成的数据集列表
+    """
+    if seed is not None:
+        random.seed(seed)
+    
+    # 过滤场景
+    filtered_catalog = {}
+    for scenario_type, scenarios in catalog.items():
+        if include_scenarios and scenario_type not in include_scenarios:
+            continue
+        if exclude_scenarios and scenario_type in exclude_scenarios:
+            continue
+        filtered_catalog[scenario_type] = scenarios
+    
+    if not filtered_catalog:
+        raise ValueError("没有可用的场景类型，请检查 include/exclude 过滤条件")
     
     # 随机打乱
     random.shuffle(all_scenarios)
