@@ -563,9 +563,8 @@ def write_json(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_file = os.path.join(output_dir, f"{output_prefix}_{timestamp}.json")
     
-    # 保存为JSON文件
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(dataset, f, ensure_ascii=False, indent=2)
+    # 获取统计信息
+    stats = generator.get_statistics(dataset)
     
     return output_file
 
