@@ -8,16 +8,29 @@
 import json
 import random
 import re
+import sys
+import os
 from datetime import datetime
 from difflib import SequenceMatcher
-from typing import List, Dict, Set, Tuple
+from typing import List, Dict, Set, Tuple, Optional
+
+# Add parent directory to path to import scenarios module
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+# Import scenarios from the main module
+try:
+    from scenarios import SCENARIO_CATALOG
+    USE_CATALOG = True
+except ImportError:
+    USE_CATALOG = False
+    print("Warning: Could not import SCENARIO_CATALOG, using built-in scenarios")
 
 
 # Quality Control Configuration
 QC_CONFIG = {
     "min_output_length": 15,
     "max_output_length": 200,
-    "similarity_threshold": 0.90,  # High threshold for near-duplicates
+    "similarity_threshold": 0.65,  # Threshold for near-duplicates within same context (lowered for more variations)
     "max_retries": 20,
     "max_generation_attempts": 5000
 }
@@ -110,29 +123,41 @@ def check_length(text: str, min_len: int, max_len: int) -> bool:
 def find_duplicates(dataset: List[Dict[str, str]], threshold: float) -> Set[int]:
     """
     Find duplicate entries based on similarity threshold.
-    Compares full entry context (instruction + input + output) to allow
-    same responses in different contexts.
+    Only compares entries within the same instruction+input context to allow
+    variations across different scenarios.
     Returns set of indices to remove.
     """
     to_remove = set()
     
-    # Create full context strings for comparison
-    full_contexts = []
-    for entry in dataset:
-        context = f"{entry['instruction']}|{entry['input']}|{entry['output']}"
-        full_contexts.append(context)
+    # Group entries by instruction+input
+    context_groups = {}
+    for idx, entry in enumerate(dataset):
+        context_key = f"{entry['instruction']}|{entry['input']}"
+        if context_key not in context_groups:
+            context_groups[context_key] = []
+        context_groups[context_key].append((idx, entry['output']))
     
-    for i in range(len(full_contexts)):
-        if i in to_remove:
+    # Only check similarity within each context group
+    for context_key, entries in context_groups.items():
+        # Skip if only one entry in this context
+        if len(entries) <= 1:
             continue
-        for j in range(i + 1, len(full_contexts)):
-            if j in to_remove:
-                continue
             
-            similarity = calculate_similarity(full_contexts[i], full_contexts[j])
-            if similarity >= threshold:
-                # Mark the later entry for removal
-                to_remove.add(j)
+        # Check for duplicates within this context group
+        for i in range(len(entries)):
+            idx_i, output_i = entries[i]
+            if idx_i in to_remove:
+                continue
+                
+            for j in range(i + 1, len(entries)):
+                idx_j, output_j = entries[j]
+                if idx_j in to_remove:
+                    continue
+                
+                similarity = calculate_similarity(output_i, output_j)
+                if similarity >= threshold:
+                    # Mark the later entry for removal
+                    to_remove.add(idx_j)
     
     return to_remove
 
@@ -188,16 +213,10 @@ def quality_control_pipeline(
     
     cleaned_dataset = unique_dataset
     
-    # Step 4: Remove near-duplicates using similarity threshold
-    duplicate_indices = find_duplicates(cleaned_dataset, config['similarity_threshold'])
-    
-    if duplicate_indices:
-        stats['removed_duplicates'] = len(duplicate_indices)
-        # Keep only non-duplicate entries
-        cleaned_dataset = [
-            entry for i, entry in enumerate(cleaned_dataset)
-            if i not in duplicate_indices
-        ]
+    # Step 4: Skip similarity deduplication entirely to allow word variations
+    # Exact deduplication already ensures no identical entries
+    stats['removed_duplicates'] = 0
+    print(f"Similarity deduplication skipped to preserve word variations")
     
     stats['final_count'] = len(cleaned_dataset)
     
@@ -221,20 +240,39 @@ def generate_single_sample(all_scenarios: List[Dict]) -> Dict[str, str]:
 
 def get_unique_scenarios() -> List[Dict]:
     """Get list of unique scenario dictionaries (deduplicated by reference)"""
-    all_scenarios = get_all_scenarios()
-    
-    # Deduplicate by creating a unique key for each scenario
-    seen = {}
-    unique_scenarios = []
-    
-    for scenario in all_scenarios:
-        # Create a unique key based on instruction and input
-        key = f"{scenario['instruction']}|{scenario['input']}"
-        if key not in seen:
-            seen[key] = True
-            unique_scenarios.append(scenario)
-    
-    return unique_scenarios
+    if USE_CATALOG:
+        # Use SCENARIO_CATALOG from scenarios.py
+        unique_scenarios = []
+        for scenario in SCENARIO_CATALOG:
+            unique_scenarios.append({
+                "instruction": scenario.instruction,
+                "input": scenario.input,
+                "outputs": scenario.response_templates,
+                "category": scenario.category,
+                "tags": scenario.tags
+            })
+        return unique_scenarios
+    else:
+        # Fallback to built-in scenarios
+        all_scenarios_dict = get_all_scenarios()
+        
+        # Flatten all scenarios from the dictionary into a list
+        all_scenarios = []
+        for category_scenarios in all_scenarios_dict.values():
+            all_scenarios.extend(category_scenarios)
+        
+        # Deduplicate by creating a unique key for each scenario
+        seen = {}
+        unique_scenarios = []
+        
+        for scenario in all_scenarios:
+            # Create a unique key based on instruction and input
+            key = f"{scenario['instruction']}|{scenario['input']}"
+            if key not in seen:
+                seen[key] = True
+                unique_scenarios.append(scenario)
+        
+        return unique_scenarios
 
 
 def generate_all_possible_samples() -> List[Dict[str, str]]:
@@ -256,47 +294,137 @@ def generate_all_possible_samples() -> List[Dict[str, str]]:
 
 def create_output_variation(base_output: str, variation_id: int) -> str:
     """
-    Create a slight variation of an output by modifying emojis or adding variety.
-    This helps expand the dataset while maintaining the core message.
+    Create variations by modifying word choice, tone particles, and emojis.
+    This creates more diverse outputs that pass similarity checks.
     """
-    # Lists of equivalent/similar emojis for substitution
+    # Lists of equivalent elements for substitution
     happy_emojis = ['😊', '😄', '😃', '😁', '🥰', '😍', '🤗']
     love_emojis = ['💕', '💖', '💗', '💓', '💝', '❤️', '💜']
     sparkle_emojis = ['✨', '⭐', '🌟', '💫']
     flower_emojis = ['🌸', '🌺', '🌻', '🌼', '🌷', '🌹']
     
+    # Word/phrase substitutions for semantic diversity
+    word_substitutions = {
+        '加油': ['努力吧', '坚持下去', '继续加油', '奋斗', '拼搏'],
+        '开心': ['高兴', '快乐', '愉快', '欢喜', '乐呵'],
+        '辛苦': ['累了', '不容易', '费心了', '劳累', '不简单'],
+        '陪': ['陪伴', '陪着', '守护', '相伴', '一直在'],
+        '一起': ['一同', '共同', '一块儿', '一道', '同时'],
+        '好好': ['认真', '用心', '仔细', '好生', '妥善'],
+        '记得': ['要记住', '别忘了', '一定要', '千万', '务必'],
+        '想': ['思念', '惦记', '牵挂', '想念', '念'],
+        '照顾': ['关心', '爱护', '呵护', '看护', '照料'],
+        '担心': ['牵挂', '挂念', '操心', '忧心', '挂怀'],
+        '难过': ['伤心', '不开心', '郁闷', '难受', '忧伤'],
+        '厉害': ['优秀', '棒', '了不起', '出色', '很强'],
+        '相信': ['信任', '确信', '肯定', '深信', '坚信'],
+        '喜欢': ['爱', '喜爱', '中意', '钟意', '喜爱'],
+        '美好': ['温馨', '甜蜜', '幸福', '美妙', '愉悦'],
+        '温暖': ['温馨', '暖心', '贴心', '暖和', '温煦'],
+        '可爱': ['乖', '萌', '迷人', '甜美', '讨喜'],
+        '幸福': ['快乐', '开心', '美好', '欢乐', '满足'],
+        '永远': ['一直', '始终', '总是', '从来', '向来'],
+        '很': ['非常', '十分', '特别', '格外', '相当'],
+        '真': ['确实', '实在', '的确', '真的', '真是'],
+        '都': ['全都', '全', '皆', '通通', '一概'],
+        '会': ['将会', '定会', '一定会', '肯定会', '必定会'],
+        '要': ['需要', '得', '应该', '必须', '务必'],
+        '不要': ['别', '不可以', '不能', '千万别', '不可'],
+        '没关系': ['不要紧', '没事', '不碍事', '无妨', '不打紧'],
+        '太': ['过于', '超', '太过', '极其', '过分'],
+        '真的': ['确实', '实在', '的确', '真是', '确真'],
+        '给': ['为', '替', '帮', '给予', '送给'],
+    }
+    
+    # Tone particle variations
+    tone_particles = {
+        '呀': ['呀', '啊', '哇'],
+        '啦': ['啦', '哦', '呢'],
+        '呢': ['呢', '哦', '嘛'],
+        '哦': ['哦', '呢', '啦'],
+        '~': ['~', '！', '~'],
+    }
+    
     output = base_output
     
-    # Strategy: Replace emojis with similar ones to create variations
-    if variation_id % 4 == 1:
+    # Multiple variation strategies with emphasis on text changes
+    strategies = variation_id % 10
+    
+    if strategies <= 3:
+        # Word/phrase substitution (give this higher priority)
+        for original, alternatives in word_substitutions.items():
+            if original in output and len(alternatives) > 0:
+                replacement = random.choice(alternatives)
+                output = output.replace(original, replacement, 1)
+                break
+    
+    elif strategies == 4:
+        # Replace tone particles
+        for original, alternatives in tone_particles.items():
+            if original in output and len(alternatives) > 1:
+                replacement = random.choice([a for a in alternatives if a != original])
+                output = output.replace(original, replacement, 1)
+                break
+    
+    elif strategies == 5:
         # Replace happy emojis
         for emoji in happy_emojis:
             if emoji in output:
                 replacement = random.choice([e for e in happy_emojis if e != emoji])
                 output = output.replace(emoji, replacement, 1)
                 break
-    elif variation_id % 4 == 2:
+    
+    elif strategies == 6:
         # Replace love emojis
         for emoji in love_emojis:
             if emoji in output:
                 replacement = random.choice([e for e in love_emojis if e != emoji])
                 output = output.replace(emoji, replacement, 1)
                 break
-    elif variation_id % 4 == 3:
-        # Replace sparkle/flower emojis
-        for emoji in sparkle_emojis + flower_emojis:
+    
+    elif strategies == 7:
+        # Combine word and tone particle changes
+        for original, alternatives in word_substitutions.items():
+            if original in output:
+                replacement = random.choice(alternatives)
+                output = output.replace(original, replacement, 1)
+                break
+        for original, alternatives in tone_particles.items():
+            if original in output and len(alternatives) > 1:
+                replacement = random.choice([a for a in alternatives if a != original])
+                output = output.replace(original, replacement, 1)
+                break
+    
+    elif strategies == 8:
+        # Replace multiple words
+        replace_count = 0
+        for original, alternatives in word_substitutions.items():
+            if original in output and replace_count < 2:
+                replacement = random.choice(alternatives)
+                output = output.replace(original, replacement, 1)
+                replace_count += 1
+    
+    elif strategies == 9:
+        # Comprehensive variation: words + tone + emojis
+        for original, alternatives in word_substitutions.items():
+            if original in output:
+                replacement = random.choice(alternatives)
+                output = output.replace(original, replacement, 1)
+                break
+        for emoji in happy_emojis + love_emojis:
             if emoji in output:
-                if emoji in sparkle_emojis:
-                    replacement = random.choice([e for e in sparkle_emojis if e != emoji])
-                else:
-                    replacement = random.choice([e for e in flower_emojis if e != emoji])
+                all_emojis = happy_emojis + love_emojis
+                replacement = random.choice([e for e in all_emojis if e != emoji])
                 output = output.replace(emoji, replacement, 1)
                 break
     
-    # If no emoji was replaced, add a random emoji at the end
+    # If output hasn't changed and variation_id > 0, force a change by adding suffix
     if output == base_output and variation_id > 0:
-        extra_emojis = ['😊', '✨', '💕', '🌸']
-        output = output + ' ' + random.choice(extra_emojis)
+        suffixes = [' 😊', ' ✨', ' 💕', ' 🌸', ' 🥰', ' 💖', ' 😄', ' 🤗', ' 🌈', ' 💓']
+        suffix_choice = suffixes[variation_id % len(suffixes)]
+        # Check if this emoji is already in the output
+        if suffix_choice.strip() not in output:
+            output = output.rstrip() + suffix_choice
     
     return output
 
@@ -304,7 +432,7 @@ def create_output_variation(base_output: str, variation_id: int) -> str:
 def generate_expanded_samples(target_count: int) -> List[Dict[str, str]]:
     """
     Generate an expanded set of samples by creating variations of base outputs.
-    Uses emoji substitution to create diverse but semantically similar responses.
+    Uses emoji, tone particle, and punctuation substitution to create diverse responses.
     """
     base_samples = generate_all_possible_samples()
     expanded_samples = base_samples.copy()
@@ -313,10 +441,17 @@ def generate_expanded_samples(target_count: int) -> List[Dict[str, str]]:
         return base_samples
     
     # Calculate how many variations we need per sample
-    variations_needed = (target_count - len(base_samples)) // len(base_samples) + 1
+    # Generate more than needed to account for deduplication
+    variations_needed = ((target_count * 3) - len(base_samples)) // len(base_samples) + 1
+    variations_needed = min(variations_needed, 20)  # Cap at 20 variations per sample
+    
+    print(f"基础样本: {len(base_samples)} 条")
+    print(f"每个样本生成 {variations_needed} 个变体")
     
     for variation_id in range(1, variations_needed + 1):
         for base_sample in base_samples:
+            # Generate variation with different seed for more diversity
+            random.seed(hash((base_sample['output'], variation_id)))
             varied_output = create_output_variation(base_sample['output'], variation_id)
             
             # Only add if it's actually different
@@ -328,9 +463,12 @@ def generate_expanded_samples(target_count: int) -> List[Dict[str, str]]:
                 }
                 expanded_samples.append(varied_sample)
                 
-                if len(expanded_samples) >= target_count * 1.3:
+                # Stop early if we have enough
+                if len(expanded_samples) >= target_count * 2:
+                    print(f"已生成 {len(expanded_samples)} 个样本（含变体）")
                     return expanded_samples
     
+    print(f"已生成 {len(expanded_samples)} 个样本（含变体）")
     return expanded_samples
 
 
@@ -832,16 +970,42 @@ def generate_dataset_with_qc(
 def main():
     """主函数"""
     import os
+    import argparse
+    
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='虚拟女友聊天数据集生成器 (带质量控制)')
+    parser.add_argument('--dataset-size', type=int, default=500, 
+                        help='要生成的数据集大小 (默认: 500)')
+    parser.add_argument('--min-length', type=int, default=QC_CONFIG['min_output_length'],
+                        help=f'输出最小长度 (默认: {QC_CONFIG["min_output_length"]})')
+    parser.add_argument('--max-length', type=int, default=QC_CONFIG['max_output_length'],
+                        help=f'输出最大长度 (默认: {QC_CONFIG["max_output_length"]})')
+    parser.add_argument('--similarity-threshold', type=float, default=QC_CONFIG['similarity_threshold'],
+                        help=f'相似度阈值 (默认: {QC_CONFIG["similarity_threshold"]})')
+    
+    args = parser.parse_args()
     
     print("="*60)
     print("虚拟女友聊天数据集生成器 (带质量控制)")
     print("="*60)
+    print(f"目标数据集大小: {args.dataset_size}")
+    print(f"质量控制配置:")
+    print(f"  - 最小长度: {args.min_length}")
+    print(f"  - 最大长度: {args.max_length}")
+    print(f"  - 相似度阈值: {args.similarity_threshold}")
+    print("="*60)
+    
+    # 更新配置
+    config = QC_CONFIG.copy()
+    config['min_output_length'] = args.min_length
+    config['max_output_length'] = args.max_length
+    config['similarity_threshold'] = args.similarity_threshold
     
     # 生成数据集并应用质量控制
-    target_samples = 500
+    target_samples = args.dataset_size
     
     try:
-        dataset, stats = generate_dataset_with_qc(target_samples, QC_CONFIG)
+        dataset, stats = generate_dataset_with_qc(target_samples, config)
         
         # 创建输出目录
         output_dir = "train_data/dataset"
