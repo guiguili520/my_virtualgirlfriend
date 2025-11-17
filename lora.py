@@ -24,30 +24,35 @@ if tokenizer.pad_token is None:
 # 针对 MPS 优化模型加载
 if torch.backends.mps.is_available():
     print("检测到MPS设备，使用Mac GPU加速")
+    # 使用 float16 减少内存占用，避免卡死
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
-        torch_dtype=torch.float16,
+        dtype=torch.float16,  # 使用float16，内存占用减半
         trust_remote_code=True,
         low_cpu_mem_usage=True
     )
     model = model.to("mps")
+    # 启用梯度检查点以节省显存
+    model.gradient_checkpointing_enable()
+    print("已启用梯度检查点，使用float16精度")
 else:
     print("使用CPU或CUDA设备")
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
-        torch_dtype=torch.float16,
+        dtype=torch.float16,
         device_map="auto",
         trust_remote_code=True
     )
+    model.gradient_checkpointing_enable()
 
-# 优化的LoRA配置 - 针对小数据集
+# 优化的LoRA配置 - 平衡性能与内存
 lora_config = LoraConfig(
     task_type=TaskType.CAUSAL_LM,
     inference_mode=False,
-    r=4,  # 减小秩，防止过拟合
-    lora_alpha=16,  # 相应减小alpha
-    lora_dropout=0.2,  # 增加dropout，防止过拟合
-    target_modules=["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+    r=4,  # 保持适中的秩，平衡效果与内存
+    lora_alpha=16,  # 相应调整alpha
+    lora_dropout=0.15,  # 适度dropout
+    target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],  # 训练核心注意力模块
     bias="none"
 )
 
@@ -83,7 +88,7 @@ def preprocess_function(examples):
     tokenized = tokenizer(
         texts,
         truncation=True,
-        max_length=512,
+        max_length=384,  # 适度减少序列长度，保留足够的上下文
         padding=False,
         add_special_tokens=True
     )
@@ -158,35 +163,47 @@ def compute_metrics(eval_pred):
     }
 
 
-# 训练回调
+# 训练回调 - 添加内存管理
 class TrainingMonitor(TrainerCallback):
     def on_log(self, args, state, control, logs=None, **kwargs):
         if logs and 'loss' in logs:
             print(f"Step {state.global_step}: Loss = {logs['loss']:.4f}")
         if logs and 'eval_loss' in logs:
             print(f"Step {state.global_step}: Eval Loss = {logs['eval_loss']:.4f}")
+        
+        # 定期清理 MPS 缓存
+        if state.global_step % 10 == 0 and torch.backends.mps.is_available():
+            torch.mps.empty_cache()
 
     def on_epoch_begin(self, args, state, control, **kwargs):
         print(f"\n🚀 开始第 {state.epoch} 轮训练")
+        # 每轮开始前清理缓存
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+            print("已清理 MPS 缓存")
 
     def on_epoch_end(self, args, state, control, **kwargs):
         print(f"✅ 完成第 {state.epoch} 轮训练")
+        # 每轮结束后清理缓存
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+            print("已清理 MPS 缓存")
 
 
-# 优化的训练参数 - 针对小数据集
+# 优化的训练参数 - 针对小数据集和内存限制
 training_args = TrainingArguments(
     output_dir=output_dir,
     overwrite_output_dir=True,
     num_train_epochs=5,  # 增加轮数但使用早停
     per_device_train_batch_size=1,
     per_device_eval_batch_size=1,
-    gradient_accumulation_steps=8,  # 增加梯度累积
-    warmup_ratio=0.1,  # 使用比例而非固定步数
+    gradient_accumulation_steps=4,  # 减少累积步数，降低内存压力
+    warmup_ratio=0.15,  # 更长的预热期，稳定训练
     logging_steps=5,  # 更频繁的日志
     eval_steps=20,  # 定期评估
     save_steps=100,
-    learning_rate=1e-4,  # 降低学习率
-    fp16=True,
+    learning_rate=2e-5,  # 显著降低学习率，提高数值稳定性
+    fp16=False,  # 在MPS上禁用fp16训练，避免nan
     remove_unused_columns=True,
     report_to=None,
     dataloader_pin_memory=False,
@@ -197,6 +214,8 @@ training_args = TrainingArguments(
     metric_for_best_model="eval_loss",  # 根据验证损失选择最佳模型
     greater_is_better=False,  # 损失越小越好
     prediction_loss_only=False,  # 需要计算完整损失
+    gradient_checkpointing=True,  # 启用梯度检查点
+    max_grad_norm=1.0,  # 适当的梯度裁剪，防止梯度爆炸
 )
 
 # 创建 Trainer

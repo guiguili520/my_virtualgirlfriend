@@ -1,5 +1,6 @@
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel  # 加载LoRA需要
 import os
 
 # 内存优化设置
@@ -7,14 +8,15 @@ os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
 
 print('MPS可用 === ', torch.backends.mps.is_available())
 
-# 本地模型路径 - 请修改为你的实际路径
-local_model_path = "./Qwen2.5-7B-Instruct"
+# 本地模型路径
+base_model_path = "./Qwen2.5-7B-Instruct"  # 基础模型
+lora_model_path = "./qwen-ai-girlfriend-lora"  # LoRA适配器
 
 print("正在为24GB Mac内存优化加载模型...")
 
 
 def load_model_optimized():
-    """为24GB内存优化的模型加载（支持MPS）"""
+    """为24GB内存优化的模型加载（支持MPS + LoRA）"""
     
     # 检测可用设备
     if torch.backends.mps.is_available():
@@ -28,17 +30,31 @@ def load_model_optimized():
         print("⚠️ 未检测到GPU，使用CPU")
     
     try:
-        # Mac MPS不支持bitsandbytes量化，直接使用float16加载到MPS
+        # 先加载基础模型
         if device == "mps":
-            print("正在加载模型到MPS (float16)...")
+            print("正在加载基础模型到MPS (float32)...")
             model = AutoModelForCausalLM.from_pretrained(
-                local_model_path,
-                dtype=torch.float16,
+                base_model_path,
+                dtype=torch.float32,  # 使用float32保证数值稳定性
                 trust_remote_code=True,
-                low_cpu_mem_usage=True  # 优化CPU内存使用
+                low_cpu_mem_usage=True
             )
             model = model.to(device)
-            print("✅ MPS加载成功")
+            print("✅ 基础模型加载成功")
+            
+            # 加载LoRA适配器
+            print("正在加载LoRA适配器...", flush=True)
+            try:
+                model = PeftModel.from_pretrained(model, lora_model_path)
+                print("✅ LoRA适配器加载成功")
+            except Exception as lora_error:
+                print(f"❌ LoRA加载失败: {lora_error}")
+                print("尝试检查 LoRA 路径和文件...")
+                import os
+                print(f"LoRA路径存在: {os.path.exists(lora_model_path)}")
+                if os.path.exists(lora_model_path):
+                    print(f"LoRA目录内容: {os.listdir(lora_model_path)}")
+                raise
         
         # CUDA设备可以尝试量化
         elif device == "cuda":
@@ -50,32 +66,35 @@ def load_model_optimized():
                     bnb_8bit_compute_dtype=torch.float16
                 )
                 model = AutoModelForCausalLM.from_pretrained(
-                    local_model_path,
+                    base_model_path,
                     quantization_config=bnb_config,
                     device_map="auto",
                     trust_remote_code=True
                 )
-                print("✅ 8位量化加载成功")
+                model = PeftModel.from_pretrained(model, lora_model_path)
+                print("✅ 8位量化+LoRA加载成功")
             except Exception as e:
                 print(f"量化失败: {e}，使用float16...")
                 model = AutoModelForCausalLM.from_pretrained(
-                    local_model_path,
+                    base_model_path,
                     dtype=torch.float16,
                     device_map="auto",
                     trust_remote_code=True
                 )
-                print("✅ CUDA float16加载成功")
+                model = PeftModel.from_pretrained(model, lora_model_path)
+                print("✅ CUDA float16+LoRA加载成功")
         
         # CPU加载
         else:
             print("正在加载模型到CPU...")
             model = AutoModelForCausalLM.from_pretrained(
-                local_model_path,
-                dtype=torch.float16,
+                base_model_path,
+                dtype=torch.float32,
                 trust_remote_code=True,
                 low_cpu_mem_usage=True
             )
-            print("✅ CPU加载成功")
+            model = PeftModel.from_pretrained(model, lora_model_path)
+            print("✅ CPU+LoRA加载成功")
             
     except Exception as e:
         print(f"❌ 加载失败: {e}")
@@ -85,7 +104,7 @@ def load_model_optimized():
 
 
 # 加载tokenizer和模型
-tokenizer = AutoTokenizer.from_pretrained(local_model_path, trust_remote_code=True)
+tokenizer = AutoTokenizer.from_pretrained(base_model_path, trust_remote_code=True)
 model = load_model_optimized()
 
 # 确保tokenizer设置
@@ -151,7 +170,7 @@ print("\n🧪 测试对话...")
 test_prompts = [
     "请用一句话介绍你自己",
     "写一个简短的问候",
-    "什么是人工智能？"
+    "早上好呀"
 ]
 
 for i, prompt in enumerate(test_prompts, 1):
