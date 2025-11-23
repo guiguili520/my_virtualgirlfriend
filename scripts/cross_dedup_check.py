@@ -394,8 +394,8 @@ class CrossDeduplicator:
 def main():
     """主函数"""
     # 配置
-    train_path = "train_data/dataset/girlfriend_chat_dataset_20251117_055552.json"
-    val_path = "train_data/validation/girlfriend_chat_validation_20251123_074751.json"
+    train_path = "data/train/girlfriend_chat_dataset_20251117_055552.json"
+    val_path = "data/validation/girlfriend_chat_validation_20251123_074751.json"
     similarity_threshold = 0.90
     
     # 创建去重器

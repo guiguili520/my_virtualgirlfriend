@@ -14,10 +14,10 @@ from datetime import datetime
 from difflib import SequenceMatcher
 from typing import List, Dict, Set, Tuple, Optional
 
-# Add parent directory to path to import scenarios module
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+# Add src directory to path to import modules
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-# Import scenarios from the main module
+# Import scenarios from the src module
 try:
     from scenarios import SCENARIO_CATALOG
     USE_CATALOG = True
@@ -976,8 +976,8 @@ def main():
     parser = argparse.ArgumentParser(description='虚拟女友聊天数据集生成器 (带质量控制)')
     parser.add_argument('--dataset-size', type=int, default=500, 
                         help='要生成的数据集大小 (默认: 500)')
-    parser.add_argument('--output-dir', type=str, default='train_data/dataset',
-                        help='输出目录路径 (默认: train_data/dataset)')
+    parser.add_argument('--output-dir', type=str, default='data/train',
+                        help='输出目录路径 (默认: data/train)')
     parser.add_argument('--output-prefix', type=str, default='girlfriend_chat_dataset',
                         help='输出文件前缀 (默认: girlfriend_chat_dataset)')
     parser.add_argument('--min-length', type=int, default=QC_CONFIG['min_output_length'],
