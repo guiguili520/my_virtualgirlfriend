@@ -1,0 +1,251 @@
+/* 虚拟女友聊天界面样式 */
+
+/* 自定义颜色 */
+:root {
+    --cream: #FFFBF0;
+    --girlfriend-bubble: #FFE5E5;
+    --user-bubble: #FFF5E1;
+    --warm-pink: #FFB6C1;
+    --warm-yellow: #FFFACD;
+    --light-orange: #FFE4B5;
+}
+
+/* 背景色 */
+.bg-cream {
+    background-color: var(--cream);
+}
+
+.bg-girlfriend-bubble {
+    background-color: var(--girlfriend-bubble);
+}
+
+.bg-user-bubble {
+    background-color: var(--user-bubble);
+}
+
+.bg-warm-pink {
+    background-color: var(--warm-pink);
+}
+
+.bg-warm-yellow {
+    background-color: var(--warm-yellow);
+}
+
+/* 文字颜色 */
+.text-warm-pink {
+    color: var(--warm-pink);
+}
+
+/* 聊天容器高度 */
+.h-chat {
+    height: calc(100vh - 180px);
+    min-height: 500px;
+}
+
+/* 滚动条样式 */
+#chat-messages::-webkit-scrollbar {
+    width: 8px;
+}
+
+#chat-messages::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+#chat-messages::-webkit-scrollbar-thumb {
+    background: var(--warm-pink);
+    border-radius: 10px;
+}
+
+#chat-messages::-webkit-scrollbar-thumb:hover {
+    background: #ff9db0;
+}
+
+/* 消息气泡动画 */
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+}
+
+/* 消息气泡样式 */
+.message-bubble {
+    max-width: 70%;
+    word-wrap: break-word;
+}
+
+/* 图片消息样式 */
+.message-image {
+    max-width: 300px;
+    max-height: 300px;
+    object-fit: cover;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.message-image:hover {
+    transform: scale(1.02);
+}
+
+/* 输入框自动高度调整 */
+#message-input {
+    min-height: 48px;
+    max-height: 150px;
+    transition: height 0.2s;
+}
+
+/* 按钮悬停效果 */
+button:active {
+    transform: scale(0.98);
+}
+
+/* 加载动画 */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* 响应式设计 */
+@media (max-width: 1024px) {
+    .h-chat {
+        height: auto;
+        min-height: 400px;
+    }
+}
+
+@media (max-width: 768px) {
+    .message-bubble {
+        max-width: 85%;
+    }
+    
+    .message-image {
+        max-width: 200px;
+        max-height: 200px;
+    }
+}
+
+/* 聊天气泡尾巴效果 */
+.bubble-tail-left::before {
+    content: '';
+    position: absolute;
+    left: -8px;
+    top: 10px;
+    width: 0;
+    height: 0;
+    border-top: 8px solid transparent;
+    border-right: 8px solid var(--girlfriend-bubble);
+    border-bottom: 8px solid transparent;
+}
+
+.bubble-tail-right::before {
+    content: '';
+    position: absolute;
+    right: -8px;
+    top: 10px;
+    width: 0;
+    height: 0;
+    border-top: 8px solid transparent;
+    border-left: 8px solid var(--user-bubble);
+    border-bottom: 8px solid transparent;
+}
+
+/* 打字动画效果 */
+@keyframes typing {
+    0% { content: '.'; }
+    33% { content: '..'; }
+    66% { content: '...'; }
+}
+
+.typing::after {
+    content: '.';
+    animation: typing 1.5s infinite;
+}
+
+/* 渐变背景效果 */
+.gradient-pink {
+    background: linear-gradient(135deg, #FFE5E5 0%, #FFB6C1 100%);
+}
+
+.gradient-orange {
+    background: linear-gradient(135deg, #FFF5E1 0%, #FFE4B5 100%);
+}
+
+/* 图片上传预览 */
+.image-preview-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    cursor: pointer;
+}
+
+.image-preview-overlay img {
+    max-width: 90%;
+    max-height: 90%;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+/* 通知提示样式 */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: white;
+    padding: 16px 24px;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    animation: slide-in 0.3s ease-out;
+}
+
+@keyframes slide-in {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* 空状态样式 */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    text-align: center;
+    color: #999;
+}
+
+.empty-state-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+}
