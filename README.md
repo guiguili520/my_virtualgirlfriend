@@ -20,30 +20,40 @@
 ### 安装要求
 
 - Python 3.6+
-- 仅使用标准库，无需安装额外依赖
+- 数据集生成：仅使用标准库，无需安装额外依赖
+- 模型训练（可选）：见 `requirements.txt`
+
+```bash
+# 安装所有依赖（用于模型训练）
+pip install -r requirements.txt
+```
+
+### 启动应用
+
+```bash
+# 查看欢迎页面和可用功能
+python main.py
+```
 
 ### 生成数据集
 
 ```bash
 # 默认配置生成500条数据
-python3 generate_girlfriend_dataset.py
+python scripts/generate_dataset.py
 
 # 生成1000条数据，每个场景10个变体
-python3 generate_girlfriend_dataset.py --num-samples 1000 --variants 10
+python scripts/generate_dataset.py --dataset-size 1000
 
-# 使用固定种子确保可重现性
-python3 generate_girlfriend_dataset.py --seed 42
-
-# 只生成特定类别的场景
-python3 generate_girlfriend_dataset.py --include greetings,love
+# 使用固定种子确保可重现性（TODO: 需要添加seed参数）
+# python scripts/generate_dataset.py --seed 42
 
 # 更多选项请查看文档
-python3 generate_girlfriend_dataset.py --help
+python scripts/generate_dataset.py --help
 ```
 
 ### 输出示例
 
-生成的数据集保存在 `train_data/dataset/girlfriend_chat_dataset_<timestamp>.json`
+生成的数据集保存在 `data/train/girlfriend_chat_dataset_<timestamp>.json`
 
 ```json
 {
@@ -108,10 +118,13 @@ python3 generate_girlfriend_dataset.py --help
 
 ## 📚 详细文档
 
-- [README_DATASET.md](README_DATASET.md) - 数据集生成器完整文档
-- [README_VARIATION_ENGINE.md](README_VARIATION_ENGINE.md) - 变化引擎详细文档
-- [ARCHITECTURE.md](ARCHITECTURE.md) - 架构设计文档
-- [QC_PIPELINE_SUMMARY.md](QC_PIPELINE_SUMMARY.md) - 质量控制管道说明
+- [data/README.md](data/README.md) - 数据集说明和使用指南
+- [models/README.md](models/README.md) - 模型文件说明
+- [scripts/README.md](scripts/README.md) - 脚本使用说明
+- [web/README.md](web/README.md) - Web UI 开发指南
+- [docs/README_VARIATION_ENGINE.md](docs/README_VARIATION_ENGINE.md) - 变化引擎详细文档
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - 架构设计文档
+- [docs/QC_PIPELINE_SUMMARY.md](docs/QC_PIPELINE_SUMMARY.md) - 质量控制管道说明
 
 ## 🎯 使用场景
 
@@ -130,15 +143,54 @@ python3 generate_girlfriend_dataset.py --help
 ## 🛠️ 项目结构
 
 ```
-.
-├── scenarios.py                    # 71个场景定义
-├── variation_engine.py            # 变化引擎核心
-├── generator.py                    # 数据集生成器
-├── generate_girlfriend_dataset.py  # 主入口程序（带CLI）
-├── README.md                       # 项目简介（本文件）
-├── README_DATASET.md              # 数据集完整文档
-├── README_VARIATION_ENGINE.md     # 变化引擎文档
-└── train_data/dataset/            # 生成的数据集输出目录
+my_virtualgirlfriend/
+├── README.md                      # 项目总体说明
+├── requirements.txt               # Python 依赖
+├── main.py                        # 应用启动文件
+│
+├── models/                        # 🤖 大模型文件存放
+│   ├── .gitkeep                   # 占位符
+│   └── README.md                  # 模型说明
+│
+├── data/                          # 📊 数据集存放
+│   ├── train/                     # 训练集
+│   │   └── girlfriend_chat_dataset_*.json
+│   ├── validation/                # 验证集
+│   │   └── girlfriend_chat_validation_*.json
+│   └── README.md                  # 数据说明
+│
+├── scripts/                       # 🔧 自动化脚本
+│   ├── generate_dataset.py        # 数据生成脚本
+│   ├── train.py                   # 训练脚本（预留）
+│   ├── fine_tune.py               # 全参数微调
+│   ├── lora_train.py              # LoRA 微调
+│   └── README.md                  # 脚本说明
+│
+├── web/                           # 🌐 Web UI
+│   ├── app.py                     # Flask 应用（预留）
+│   ├── static/                    # 静态文件（预留）
+│   ├── templates/                 # HTML 模板（预留）
+│   └── README.md                  # Web 说明
+│
+├── src/                           # 📚 核心业务代码
+│   ├── __init__.py
+│   ├── config.py                  # 配置文件
+│   ├── scenarios.py               # 71个场景定义
+│   ├── variation_engine.py        # 变化引擎核心
+│   ├── generator.py               # 数据集生成器
+│   ├── models/                    # 模型定义
+│   └── utils/                     # 工具函数
+│
+├── tests/                         # ✅ 测试代码
+│   ├── __init__.py
+│   ├── test_acceptance_criteria.py
+│   ├── test_variation_engine.py
+│   └── test_run.py
+│
+└── docs/                          # 📖 项目文档
+    ├── ARCHITECTURE.md
+    ├── README_VARIATION_ENGINE.md
+    └── ...
 ```
 
 ## 📊 数据集统计
@@ -154,28 +206,23 @@ python3 generate_girlfriend_dataset.py --help
 
 ## 🔧 命令行选项
 
-### 基本参数
-- `--num-samples N`: 生成N条数据（默认500）
-- `--seed N`: 设置随机种子
-- `--output PATH`: 指定输出文件路径
+### 数据集生成参数 (scripts/generate_dataset.py)
 
-### 变化引擎参数
-- `--variants N`: 每个场景生成N个变体（默认8）
-- `--no-variation-engine`: 禁用变化引擎
+```bash
+# 基本参数
+--dataset-size N          # 生成N条数据（默认500）
+--output-dir PATH         # 指定输出目录（默认data/train）
+--output-prefix PREFIX    # 文件名前缀（默认girlfriend_chat_dataset）
 
-### 质量控制参数
-- `--min-length N`: 最小输出长度（默认15）
-- `--max-length N`: 最大输出长度（默认200）
-- `--similarity-threshold F`: 去重相似度阈值（默认0.90）
-- `--skip-qc`: 跳过质量控制检查
+# 质量控制参数
+--min-length N            # 最小输出长度（默认15）
+--max-length N            # 最大输出长度（默认200）
+--similarity-threshold F  # 去重相似度阈值（默认0.65）
+```
 
-### 场景过滤参数
-- `--include CATEGORIES`: 只包含指定类别（逗号分隔）
-- `--exclude CATEGORIES`: 排除指定类别（逗号分隔）
-- `--include-tags TAGS`: 只包含指定标签（逗号分隔）
-- `--exclude-tags TAGS`: 排除指定标签（逗号分隔）
-
-详细使用说明请参考 [README_DATASET.md](README_DATASET.md)
+详细使用说明请参考：
+- [data/README.md](data/README.md) - 数据集完整文档
+- [scripts/README.md](scripts/README.md) - 脚本使用说明
 
 ## ⚠️ 注意事项
 
@@ -200,6 +247,15 @@ python3 generate_girlfriend_dataset.py --help
 本项目遵循项目仓库的许可证。
 
 ## 📊 更新日志
+
+- **v3.0** (2024-11):
+  - 🏗️ 重构为标准应用架构
+  - 📁 清晰的目录结构（models/, data/, scripts/, web/, src/, tests/）
+  - 🚀 新增 main.py 应用入口
+  - ⚙️ 新增 src/config.py 配置管理
+  - 📝 完善各模块 README 文档
+  - 🌐 预留 Web UI 开发框架
+  - 📦 新增 requirements.txt 依赖管理
 
 - **v2.0** (2024):
   - 新增变化引擎，支持自动生成变体

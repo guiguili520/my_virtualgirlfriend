@@ -5,6 +5,10 @@ Acceptance Criteria Test Suite
 Tests all requirements from the ticket
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
 from scenarios import (
     SCENARIO_CATALOG,
     validate_catalog,
