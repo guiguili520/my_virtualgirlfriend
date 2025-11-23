@@ -24,7 +24,7 @@ MAX_CONTENT_LENGTH = MAX_FILE_SIZE
 
 # 服务器配置
 HOST = os.environ.get('HOST', '0.0.0.0')
-PORT = int(os.environ.get('PORT', 5000))
+PORT = int(os.environ.get('PORT', 5555))
 DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
 # 聊天配置

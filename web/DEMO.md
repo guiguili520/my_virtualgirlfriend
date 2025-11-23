@@ -150,7 +150,7 @@ curl -X POST http://localhost:5000/api/chat \
 }
 
 # 2. 获取历史
-curl http://localhost:5000/api/history
+curl http://localhost:5555/api/history
 
 # 响应:
 {
@@ -159,10 +159,10 @@ curl http://localhost:5000/api/history
 }
 
 # 3. 清空历史
-curl -X DELETE http://localhost:5000/api/history
+curl -X DELETE http://localhost:5555/api/history
 
 # 4. 上传图片
-curl -X POST http://localhost:5000/api/upload \
+curl -X POST http://localhost:5555/api/upload \
   -F "file=@/path/to/image.jpg"
 ```
 
@@ -173,7 +173,7 @@ import requests
 
 # 发送消息
 response = requests.post(
-    'http://localhost:5000/api/chat',
+    'http://localhost:5555/api/chat',
     json={'message': '你好呀'}
 )
 print(response.json())
@@ -182,7 +182,7 @@ print(response.json())
 with open('image.jpg', 'rb') as f:
     files = {'file': f}
     response = requests.post(
-        'http://localhost:5000/api/upload',
+        'http://localhost:5555/api/upload',
         files=files
     )
 print(response.json())
@@ -313,7 +313,7 @@ python web/app.py
 pip install gunicorn
 
 # 启动服务
-gunicorn -w 4 -b 0.0.0.0:5000 web.app:app
+gunicorn -w 4 -b 0.0.0.0:5555 web.app:app
 ```
 
 ### Docker 部署

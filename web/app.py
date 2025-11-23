@@ -28,13 +28,18 @@ except ImportError:
     sys.exit(1)
 
 import config as web_config
-from models.inference import generate_girlfriend_reply
+from models.inference import init_model, generate_girlfriend_reply
 
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = web_config.SECRET_KEY
 app.config['MAX_CONTENT_LENGTH'] = web_config.MAX_CONTENT_LENGTH
 CORS(app)
+
+# 在应用启动时初始化模型（加载本地大模型）
+print("\n🚀 初始化虚拟女友模型...\n")
+init_model(model_path="./models")
+print()
 
 
 def load_chat_history():

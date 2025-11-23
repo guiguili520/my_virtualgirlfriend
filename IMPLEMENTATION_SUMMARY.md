@@ -208,13 +208,13 @@ nohup python web/app.py > web.log 2>&1 &
 
 ### 访问地址
 ```
-http://localhost:5000
+http://localhost:5555
 ```
 
 ### 生产部署
 ```bash
 # 使用Gunicorn
-gunicorn -w 4 -b 0.0.0.0:5000 web.app:app
+gunicorn -w 4 -b 0.0.0.0:5555 web.app:app
 ```
 
 ## 📚 文档

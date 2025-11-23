@@ -29,7 +29,7 @@ LORA_NAME = "qwen-ai-girlfriend-lora"
 
 # Web UI 配置
 WEB_HOST = "0.0.0.0"
-WEB_PORT = 5000
+WEB_PORT = 5555
 DEBUG_MODE = False
 
 # 日志配置

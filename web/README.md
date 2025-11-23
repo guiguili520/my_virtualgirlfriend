@@ -66,7 +66,7 @@ python -m web.app
 ```bash
 # 设置主机和端口
 export HOST=0.0.0.0
-export PORT=5000
+export PORT=5555
 
 # 开启调试模式
 export DEBUG=true
@@ -240,7 +240,7 @@ MAX_MESSAGE_LENGTH = 500  # 单条消息最大长度
 
 # 服务器配置
 HOST = '0.0.0.0'
-PORT = 5000
+PORT = 5555
 DEBUG = False
 ```
 
@@ -302,18 +302,18 @@ python web/app.py
 # 使用 curl 测试 API
 
 # 1. 发送消息
-curl -X POST http://localhost:5000/api/chat \
+curl -X POST http://localhost:5555/api/chat \
   -H "Content-Type: application/json" \
   -d '{"message": "你好呀"}'
 
 # 2. 获取历史
-curl http://localhost:5000/api/history
+curl http://localhost:5555/api/history
 
 # 3. 清空历史
-curl -X DELETE http://localhost:5000/api/history
+curl -X DELETE http://localhost:5555/api/history
 
 # 4. 上传图片
-curl -X POST http://localhost:5000/api/upload \
+curl -X POST http://localhost:5555/api/upload \
   -F "file=@/path/to/image.jpg"
 ```
 

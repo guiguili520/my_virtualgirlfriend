@@ -39,7 +39,7 @@ python main.py
 ./start_web.sh
 # 或
 python web/app.py
-# 访问 http://localhost:5000
+# 访问 http://localhost:5555
 ```
 
 ### 生成数据集

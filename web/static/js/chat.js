@@ -41,11 +41,11 @@ function addMessage(sender, type, content, timestamp) {
     
     // 头像
     const avatar = document.createElement('div');
-    avatar.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0';
+    avatar.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden';
     
     if (sender === 'girlfriend') {
         avatar.className += ' bg-gradient-to-br from-pink-200 to-pink-300';
-        avatar.innerHTML = '<span class="text-xl">👧</span>';
+        avatar.innerHTML = '<img src="/static/images/girlfriend.jpg" alt="Girlfriend" class="w-full h-full object-cover">';
     } else {
         avatar.className += ' bg-gradient-to-br from-blue-200 to-blue-300';
         avatar.innerHTML = '<span class="text-xl">👤</span>';
@@ -105,6 +105,81 @@ function addMessage(sender, type, content, timestamp) {
     
     // 更新消息计数
     updateMessageCount();
+}
+
+// 添加带本地图片的消息（用于立即预览）
+function addMessageWithLocalImage(sender, localImageUrl, timestamp, messageId) {
+    const messagesContainer = document.getElementById('chat-messages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'flex items-start space-x-3 animate-fade-in';
+    messageDiv.id = messageId; // 设置ID以便后续替换
+    
+    if (sender === 'user') {
+        messageDiv.className += ' flex-row-reverse space-x-reverse';
+    }
+    
+    // 头像
+    const avatar = document.createElement('div');
+    avatar.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden';
+    avatar.className += ' bg-gradient-to-br from-blue-200 to-blue-300';
+    avatar.innerHTML = '<span class="text-xl">👤</span>';
+    
+    // 消息内容容器
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'flex flex-col max-w-md items-end';
+    
+    // 消息气泡
+    const bubble = document.createElement('div');
+    bubble.className = 'rounded-2xl px-4 py-3 shadow-sm bg-user-bubble text-gray-800 rounded-tr-sm';
+    
+    // 图片
+    const img = document.createElement('img');
+    img.src = localImageUrl;
+    img.alt = 'Uploading image';
+    img.className = 'message-image';
+    img.dataset.messageId = messageId; // 标记以便后续替换
+    bubble.appendChild(img);
+    
+    contentDiv.appendChild(bubble);
+    
+    // 时间戳
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'text-xs text-gray-400 mt-1 mr-2 text-right';
+    timeSpan.textContent = formatTime(timestamp);
+    contentDiv.appendChild(timeSpan);
+    
+    messageDiv.appendChild(avatar);
+    messageDiv.appendChild(contentDiv);
+    
+    messagesContainer.appendChild(messageDiv);
+    
+    // 滚动到底部
+    scrollToBottom();
+    
+    // 更新消息计数
+    updateMessageCount();
+}
+
+// 替换消息中的图片URL（从本地URL替换为服务器URL）
+function replaceMessageImage(messageId, serverFilename) {
+    const messageDiv = document.getElementById(messageId);
+    if (messageDiv) {
+        const img = messageDiv.querySelector('img[data-message-id="' + messageId + '"]');
+        if (img) {
+            img.src = `/uploads/${serverFilename}`;
+            img.onclick = () => showImagePreview(img.src);
+            delete img.dataset.messageId;
+        }
+    }
+}
+
+// 移除消息
+function removeMessage(messageId) {
+    const messageDiv = document.getElementById(messageId);
+    if (messageDiv) {
+        messageDiv.remove();
+        updateMessageCount();
+    }
 }
 
 // 滚动到底部
@@ -210,12 +285,22 @@ async function handleImageUpload(event) {
     }
     
     isProcessing = true;
-    toggleLoading(true);
+    
+    // 创建本地预览URL，立即显示图片
+    const localImageUrl = URL.createObjectURL(file);
+    const tempMessageId = 'temp-' + Date.now();
+    
+    // 立即显示用户上传的图片（使用本地URL）
+    addMessageWithLocalImage('user', localImageUrl, new Date().toISOString(), tempMessageId);
     
     try {
         const formData = new FormData();
         formData.append('file', file);
         
+        // 显示加载指示器，等待女友回复
+        toggleLoading(true);
+        
+        // 上传图片到服务器
         const response = await fetch('/api/upload', {
             method: 'POST',
             body: formData
@@ -224,19 +309,28 @@ async function handleImageUpload(event) {
         const data = await response.json();
         
         if (data.status === 'success') {
-            // 显示用户上传的图片
-            addMessage('user', 'image', data.filename, new Date().toISOString());
+            // 替换为服务器URL
+            replaceMessageImage(tempMessageId, data.filename);
+            
+            // 释放本地URL
+            URL.revokeObjectURL(localImageUrl);
             
             // 显示女友回复
             addMessage('girlfriend', 'text', data.reply, new Date().toISOString());
             
             showNotification('图片上传成功！', 'success');
         } else {
+            // 上传失败，移除临时消息
+            removeMessage(tempMessageId);
+            URL.revokeObjectURL(localImageUrl);
             showNotification(data.message || '上传失败', 'error');
         }
         
     } catch (error) {
         console.error('上传图片失败:', error);
+        // 上传失败，移除临时消息
+        removeMessage(tempMessageId);
+        URL.revokeObjectURL(localImageUrl);
         showNotification('上传失败，请稍后重试', 'error');
     } finally {
         isProcessing = false;
@@ -263,6 +357,9 @@ async function loadChatHistory() {
             data.history.forEach(msg => {
                 addMessage(msg.sender, msg.type, msg.content, msg.timestamp);
             });
+            
+            // 加载完成后滚动到底部
+            scrollToBottom();
         }
         
     } catch (error) {
