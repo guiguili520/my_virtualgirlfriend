@@ -976,6 +976,10 @@ def main():
     parser = argparse.ArgumentParser(description='虚拟女友聊天数据集生成器 (带质量控制)')
     parser.add_argument('--dataset-size', type=int, default=500, 
                         help='要生成的数据集大小 (默认: 500)')
+    parser.add_argument('--output-dir', type=str, default='train_data/dataset',
+                        help='输出目录路径 (默认: train_data/dataset)')
+    parser.add_argument('--output-prefix', type=str, default='girlfriend_chat_dataset',
+                        help='输出文件前缀 (默认: girlfriend_chat_dataset)')
     parser.add_argument('--min-length', type=int, default=QC_CONFIG['min_output_length'],
                         help=f'输出最小长度 (默认: {QC_CONFIG["min_output_length"]})')
     parser.add_argument('--max-length', type=int, default=QC_CONFIG['max_output_length'],
@@ -1008,12 +1012,12 @@ def main():
         dataset, stats = generate_dataset_with_qc(target_samples, config)
         
         # 创建输出目录
-        output_dir = "train_data/dataset"
+        output_dir = args.output_dir
         os.makedirs(output_dir, exist_ok=True)
         
         # 生成文件名（包含时间戳）
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = f"{output_dir}/girlfriend_chat_dataset_{timestamp}.json"
+        output_file = f"{output_dir}/{args.output_prefix}_{timestamp}.json"
         
         # 保存为JSON文件
         with open(output_file, 'w', encoding='utf-8') as f:
