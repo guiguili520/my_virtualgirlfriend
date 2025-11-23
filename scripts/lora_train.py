@@ -10,9 +10,9 @@ from sklearn.metrics import accuracy_score
 import evaluate
 
 # 配置参数
-model_path = "./models/Qwen2.5-7B-Instruct"
+model_path = "./models"  # 从项目根目录的 models 目录加载基础模型
 output_dir = "./models/qwen-ai-girlfriend-lora"
-dataset_path = "./data/train/girlfriend_chat_dataset_20251113_052759.json"
+dataset_path = "./data/train/girlfriend_chat_dataset_20251117_055552.json"  # 2000条训练数据
 
 print("加载模型和tokenizer...")
 tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)

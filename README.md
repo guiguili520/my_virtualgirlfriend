@@ -14,6 +14,7 @@
 - 🛡️ **严格质量控制**：自动去重、长度验证、表情验证、人设检查
 - 🔧 **灵活配置**：支持CLI参数配置变体数量、质量阈值、场景过滤等
 - 📊 **高质量输出**：98%+表情覆盖率，100%人设一致性
+- 🌐 **Web聊天界面**：基于Flask的二次元风格聊天界面，支持文本、图片、历史记录
 
 ## 🚀 快速开始
 
@@ -33,6 +34,12 @@ pip install -r requirements.txt
 ```bash
 # 查看欢迎页面和可用功能
 python main.py
+
+# 启动 Web 聊天界面
+./start_web.sh
+# 或
+python web/app.py
+# 访问 http://localhost:5555
 ```
 
 ### 生成数据集
@@ -121,7 +128,8 @@ python scripts/generate_dataset.py --help
 - [data/README.md](data/README.md) - 数据集说明和使用指南
 - [models/README.md](models/README.md) - 模型文件说明
 - [scripts/README.md](scripts/README.md) - 脚本使用说明
-- [web/README.md](web/README.md) - Web UI 开发指南
+- [web/README.md](web/README.md) - **Web聊天界面完整文档** 💕
+- [web/DEMO.md](web/DEMO.md) - **Web界面使用演示** 🎬
 - [docs/README_VARIATION_ENGINE.md](docs/README_VARIATION_ENGINE.md) - 变化引擎详细文档
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - 架构设计文档
 - [docs/QC_PIPELINE_SUMMARY.md](docs/QC_PIPELINE_SUMMARY.md) - 质量控制管道说明
@@ -130,6 +138,7 @@ python scripts/generate_dataset.py --help
 
 - **大语言模型微调**：训练GPT、LLaMA、ChatGLM等模型
 - **对话系统开发**：构建虚拟女友聊天机器人
+- **Web聊天应用**：开箱即用的聊天界面，支持文本和图片
 - **研究和学习**：对话生成、情感计算、人设一致性研究
 - **产品原型开发**：快速验证对话产品想法
 

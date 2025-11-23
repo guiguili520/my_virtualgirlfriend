@@ -15,10 +15,11 @@ peft>=0.5.0
 accelerate>=0.20.0
 bitsandbytes>=0.41.0
 
-# Web UI 框架 (预留)
-# Web UI Framework (reserved)
+# Web UI 框架
+# Web UI Framework
 flask>=2.3.0
 flask-cors>=4.0.0
+werkzeug>=3.0.0
 
 # 数据处理
 # Data Processing

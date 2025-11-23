@@ -1,6 +1,7 @@
 # 模型文件
 Qwen2.5-7B-Instruct/
 qwen-ai-girlfriend-lora/
+models/
 
 # 模型权重文件
 *.pt
@@ -86,3 +87,8 @@ data/validation/*.json
 
 # 模型文件夹占位符例外
 !models/.gitkeep
+
+# Web 应用上传文件和数据
+web/uploads/*
+!web/uploads/.gitkeep
+web/data/chat_history.json
