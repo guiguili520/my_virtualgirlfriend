@@ -1,0 +1,32 @@
+# 虚拟女友项目依赖
+# Virtual Girlfriend Project Dependencies
+
+# 核心依赖 - Core Dependencies
+# Python 标准库已包含所有基础功能
+# Standard library provides all basic functionality
+
+# 可选依赖 - Optional Dependencies
+
+# 深度学习框架 (用于模型训练)
+# Deep Learning Framework (for model training)
+torch>=2.0.0
+transformers>=4.30.0
+peft>=0.5.0
+accelerate>=0.20.0
+bitsandbytes>=0.41.0
+
+# Web UI 框架 (预留)
+# Web UI Framework (reserved)
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# 数据处理
+# Data Processing
+numpy>=1.24.0
+pandas>=2.0.0
+
+# 开发工具
+# Development Tools
+pytest>=7.4.0
+black>=23.0.0
+flake8>=6.0.0

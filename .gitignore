@@ -77,3 +77,12 @@ logs/
 # 临时文件
 *.tmp
 *.temp
+
+# 数据文件 (较大，不提交)
+data/train/*.json
+data/validation/*.json
+!data/train/.gitkeep
+!data/validation/.gitkeep
+
+# 模型文件夹占位符例外
+!models/.gitkeep
