@@ -86,3 +86,8 @@ data/validation/*.json
 
 # 模型文件夹占位符例外
 !models/.gitkeep
+
+# Web 应用上传文件和数据
+web/uploads/*
+!web/uploads/.gitkeep
+web/data/chat_history.json
