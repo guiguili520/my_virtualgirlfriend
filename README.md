@@ -16,6 +16,7 @@
 - 📊 **高质量输出**：98%+表情覆盖率，100%人设一致性
 - 🌐 **Web聊天界面**：基于Flask的二次元风格聊天界面，支持文本、图片、历史记录
 - 🧠 **智能推理流水线**：集成搜索增强、MCP支持、多源信息整合、自动人格化处理
+- 🔌 **MCP服务集成**：多服务内容提供者，支持天气、新闻等外部知识源增强
 
 ## 🚀 快速开始
 
@@ -152,6 +153,7 @@ print(result["response"])
 - [scripts/README.md](scripts/README.md) - 脚本使用说明
 - [web/README.md](web/README.md) - **Web聊天界面完整文档** 💕
 - [web/DEMO.md](web/DEMO.md) - **Web界面使用演示** 🎬
+- [src/mcp/README.md](src/mcp/README.md) - **MCP多服务内容提供者** 🌐
 - [docs/README_VARIATION_ENGINE.md](docs/README_VARIATION_ENGINE.md) - 变化引擎详细文档
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - 架构设计文档
 - [docs/QC_PIPELINE_SUMMARY.md](docs/QC_PIPELINE_SUMMARY.md) - 质量控制管道说明
