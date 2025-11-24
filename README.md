@@ -15,6 +15,7 @@
 - 🔧 **灵活配置**：支持CLI参数配置变体数量、质量阈值、场景过滤等
 - 📊 **高质量输出**：98%+表情覆盖率，100%人设一致性
 - 🌐 **Web聊天界面**：基于Flask的二次元风格聊天界面，支持文本、图片、历史记录
+- 🧠 **智能推理流水线**：集成搜索增强、MCP支持、多源信息整合、自动人格化处理
 - 🔌 **MCP服务集成**：多服务内容提供者，支持天气、新闻等外部知识源增强
 
 ## 🚀 快速开始
@@ -57,6 +58,27 @@ python scripts/generate_dataset.py --dataset-size 1000
 
 # 更多选项请查看文档
 python scripts/generate_dataset.py --help
+```
+
+### 使用推理流水线
+
+```bash
+# 运行推理流水线演示
+python demo_inference_pipeline.py
+
+# 在代码中使用
+from inference import run_chat
+
+# 简单对话
+result = run_chat("你好呀~")
+print(result["response"])
+
+# 带增强的查询
+result = run_chat("今天天气怎么样？", opts={"enable_enhancement": True})
+print(result["response"])
+
+# 查看完整文档
+# 详见 docs/INFERENCE_PIPELINE_README.md
 ```
 
 ### 输出示例
@@ -234,6 +256,7 @@ my_virtualgirlfriend/
 详细使用说明请参考：
 - [data/README.md](data/README.md) - 数据集完整文档
 - [scripts/README.md](scripts/README.md) - 脚本使用说明
+- [docs/INFERENCE_PIPELINE_README.md](docs/INFERENCE_PIPELINE_README.md) - 推理流水线完整文档
 
 ## ⚠️ 注意事项
 
