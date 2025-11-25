@@ -4,21 +4,45 @@
 
 本项目采用模块化架构设计，将场景定义、生成逻辑和主入口分离，支持结构化的对话场景管理和灵活的数据集生成方式。
 
-## 模块结构
+## 项目结构
 
 ```
-.
-├── scenarios.py                    # 场景数据定义模块
-├── generator.py                    # 数据集生成逻辑模块
-├── generate_girlfriend_dataset.py  # 主入口程序
-└── train_data/
-    └── dataset/                    # 生成的数据集存储目录
+my_virtualgirlfriend/
+├── README.md                      # 项目总体说明
+├── main.py                        # 应用统一入口
+├── requirements.txt               # Python依赖
+├── models/                        # 大模型文件存放
+├── data/                          # 数据集存放
+│   ├── train/                     # 训练数据集
+│   ├── validation/                # 验证数据集
+│   ├── role/                      # 角色人设定义文件
+│   └── README.md
+├── scripts/                       # 自动化脚本
+│   ├── generate_dataset.py        # 数据集生成脚本
+│   ├── train.py                   # 训练脚本
+│   ├── fine_tune.py               # 全参数微调
+│   ├── lora_train.py              # LoRA微调
+│   └── README.md
+├── web/                           # Web UI
+│   ├── app.py                     # Flask应用
+│   └── README.md
+├── src/                           # 核心业务代码
+│   ├── config.py                  # 配置文件
+│   ├── scenarios.py               # 场景定义
+│   ├── generator.py               # 数据集生成器
+│   └── variation_engine.py        # 变化引擎
+├── tests/                         # 测试代码
+└── docs/                          # 项目文档
+    ├── ARCHITECTURE.md            # 本文档
+    ├── README_VARIATION_ENGINE.md # 变化引擎文档
+    └── QC_PIPELINE_SUMMARY.md     # 质量控制文档
 ```
 
 ## 核心模块说明
 
-### 1. scenarios.py - 场景目录模块
+### 1. src/scenarios.py - 场景目录模块
 
+**路径**: `src/scenarios.py`  
 **功能**: 定义所有对话场景的结构化数据
 
 #### Scenario 类
@@ -114,8 +138,9 @@ class Scenario:
 - ✅ 每个场景包含完整字段
 - ✅ 每个场景至少有一个响应模板
 
-### 2. generator.py - 生成器模块
+### 2. src/generator.py - 生成器模块
 
+**路径**: `src/generator.py`  
 **功能**: 提供数据集生成的核心逻辑
 
 #### GirlfriendDatasetGenerator 类
@@ -163,23 +188,33 @@ class Scenario:
 - 空输入比例
 - 平均输出长度
 
-### 3. generate_girlfriend_dataset.py - 主入口
+### 3. scripts/generate_dataset.py - 数据集生成脚本
 
+**路径**: `scripts/generate_dataset.py`  
 **功能**: 提供命令行入口，整合场景和生成器模块
 
 #### 主要流程
 
-1. 创建生成器实例
-2. 显示场景目录信息
-3. 验证场景数量 (≥50)
-4. 生成数据集
-5. 保存到文件
-6. 显示统计信息和示例数据
+1. 解析命令行参数
+2. 创建生成器实例
+3. 显示场景目录信息
+4. 验证场景数量 (≥50)
+5. 生成数据集（支持变化引擎）
+6. 质量控制（去重、验证）
+7. 保存到文件（data/train/目录）
+8. 显示统计信息和示例数据
 
 #### 使用方式
 
 ```bash
-python3 generate_girlfriend_dataset.py
+# 默认生成500条数据
+python scripts/generate_dataset.py
+
+# 生成1000条数据
+python scripts/generate_dataset.py --dataset-size 1000
+
+# 查看所有选项
+python scripts/generate_dataset.py --help
 ```
 
 ## 数据格式
@@ -231,7 +266,7 @@ python3 generate_girlfriend_dataset.py
 
 ### 添加新场景
 
-在 `scenarios.py` 中添加新的 `Scenario` 对象到 `SCENARIO_CATALOG`：
+在 `src/scenarios.py` 中添加新的 `Scenario` 对象到 `SCENARIO_CATALOG`：
 
 ```python
 Scenario(
@@ -265,7 +300,7 @@ Scenario(
 ### 运行场景验证
 
 ```bash
-python3 scenarios.py
+python -c "import sys; sys.path.insert(0, 'src'); from scenarios import validate_catalog; validate_catalog()"
 ```
 
 验证结果：
@@ -274,22 +309,20 @@ python3 scenarios.py
 - ✅ 指令唯一
 - ✅ 字段完整性
 
-### 运行生成器测试
+### 运行测试套件
 
 ```bash
-python3 generator.py
+# 运行接受标准测试
+python tests/test_acceptance_criteria.py
+
+# 运行变化引擎测试
+python tests/test_variation_engine.py
 ```
 
-测试内容：
-- 确定性生成验证
-- 指令唯一性验证
-- 统计信息计算
-- 示例数据展示
-
-### 运行完整生成
+### 运行完整数据集生成
 
 ```bash
-python3 generate_girlfriend_dataset.py
+python scripts/generate_dataset.py
 ```
 
 ## API使用示例
@@ -297,6 +330,10 @@ python3 generate_girlfriend_dataset.py
 ### 基本使用
 
 ```python
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+
 from generator import GirlfriendDatasetGenerator
 
 # 创建生成器
@@ -329,7 +366,12 @@ dataset = generator.generate_balanced_dataset(samples_per_scenario=10)
 ### 按分类生成
 
 ```python
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+
 from scenarios import get_scenarios_by_category
+from generator import GirlfriendDatasetGenerator
 
 # 只生成问候场景的数据集
 greeting_scenarios = get_scenarios_by_category("greetings")
@@ -340,7 +382,12 @@ dataset = generator.generate_random_dataset(num_samples=100)
 ### 按标签生成
 
 ```python
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+
 from scenarios import get_scenarios_by_tag
+from generator import GirlfriendDatasetGenerator
 
 # 只生成包含"love"标签的场景
 love_scenarios = get_scenarios_by_tag("love")
@@ -400,4 +447,4 @@ print(f"Emoji覆盖率: {stats['emoji_coverage']}")
 3. 响应模板符合女友persona
 4. 包含至少一个emoji
 5. 添加适当的分类和标签
-6. 通过 `python3 scenarios.py` 验证
+6. 通过测试验证：`python tests/test_acceptance_criteria.py`
