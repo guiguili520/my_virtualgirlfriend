@@ -35,3 +35,27 @@ DEBUG_MODE = False
 # 日志配置
 LOG_LEVEL = "INFO"
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# 推理增强配置
+# Inference Enhancement Configuration
+ENABLE_ENHANCEMENT = True  # 全局开关
+ENHANCEMENT_MIN_QUERY_LENGTH = 10  # 触发增强的最小查询长度
+ENHANCEMENT_KEYWORDS = [
+    "什么", "为什么", "怎么", "如何", "谁", "哪里", "哪个", "多少",
+    "什么时候", "是否", "能不能", "可以吗", "告诉我", "查一下"
+]  # 触发增强的关键词
+
+# 网络搜索配置
+ENABLE_NETWORK_SEARCH = True
+SEARCH_MAX_RESULTS = 3
+SEARCH_TIMEOUT = 5  # 秒
+
+# MCP配置
+ENABLE_MCP = True
+MCP_TIMEOUT = 3  # 秒
+
+# 增强模块配置
+RANKING_TOP_K = 5  # 保留前K个结果
+DEDUP_SIMILARITY_THRESHOLD = 0.85  # 去重相似度阈值
+SUMMARY_MAX_LENGTH = 200  # 摘要最大长度
+PERSONA_EMOJI_PROBABILITY = 0.8  # 表情符号出现概率
