@@ -148,14 +148,15 @@ print(result["response"])
 
 ## 📚 详细文档
 
+### 使用文档
 - [data/README.md](data/README.md) - 数据集说明和使用指南
 - [models/README.md](models/README.md) - 模型文件说明
 - [scripts/README.md](scripts/README.md) - 脚本使用说明
-- [web/README.md](web/README.md) - **Web聊天界面完整文档** 💕
-- [web/DEMO.md](web/DEMO.md) - **Web界面使用演示** 🎬
-- [src/mcp/README.md](src/mcp/README.md) - **MCP多服务内容提供者** 🌐
-- [docs/README_VARIATION_ENGINE.md](docs/README_VARIATION_ENGINE.md) - 变化引擎详细文档
+- [web/README.md](web/README.md) - Web聊天界面完整文档
+
+### 技术文档
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - 架构设计文档
+- [docs/README_VARIATION_ENGINE.md](docs/README_VARIATION_ENGINE.md) - 变化引擎详细文档
 - [docs/QC_PIPELINE_SUMMARY.md](docs/QC_PIPELINE_SUMMARY.md) - 质量控制管道说明
 
 ## 🎯 使用场景
@@ -221,9 +222,9 @@ my_virtualgirlfriend/
 │   └── test_run.py
 │
 └── docs/                          # 📖 项目文档
-    ├── ARCHITECTURE.md
-    ├── README_VARIATION_ENGINE.md
-    └── ...
+    ├── ARCHITECTURE.md            # 架构设计
+    ├── README_VARIATION_ENGINE.md # 变化引擎
+    └── QC_PIPELINE_SUMMARY.md     # 质量控制
 ```
 
 ## 📊 数据集统计
