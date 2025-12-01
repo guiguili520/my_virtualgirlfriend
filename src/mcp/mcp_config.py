@@ -4,11 +4,12 @@
 MCP配置解析器
 MCP Configuration Parser
 
-负责读取和解析enhance_config.yaml中的MCP服务配置
-Responsible for reading and parsing MCP service configuration from enhance_config.yaml
+负责读取和解析mcp.json中的MCP服务配置
+Responsible for reading and parsing MCP service configuration from mcp.json
 """
 
 import os
+import json
 import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -107,35 +108,44 @@ class MCPConfig:
 def load_mcp_config(config_path: Optional[str] = None) -> MCPConfig:
     """
     加载MCP配置文件
-    Load MCP configuration file
-    
+    Load MCP configuration file (supports both JSON and YAML)
+
     Args:
-        config_path: 配置文件路径，默认为项目根目录下的enhance_config.yaml
-                    Path to config file, defaults to enhance_config.yaml in project root
-    
+        config_path: 配置文件路径，默认为项目根目录下的enhance_config.yaml或mcp.json
+                    Path to config file, defaults to enhance_config.yaml or mcp.json in project root
+
     Returns:
         MCPConfig: 解析后的配置对象 / Parsed configuration object
     """
+    project_root = Path(__file__).parent.parent.parent
+
     if config_path is None:
-        # Default to project root
-        project_root = Path(__file__).parent.parent.parent
-        config_path = project_root / "enhance_config.yaml"
+        # Try to find config file: enhance_config.yaml first, then mcp.json
+        config_file = project_root / "enhance_config.yaml"
+        if not config_file.exists():
+            config_file = project_root / "mcp.json"
     else:
-        config_path = Path(config_path)
-    
-    if not config_path.exists():
+        config_file = Path(config_path)
+
+    if not config_file.exists():
         # Return default config if file doesn't exist
+        print(f"Warning: MCP config file not found at {config_file}")
         return MCPConfig(enabled=False, services=[])
-    
+
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-        
+        with open(config_file, 'r', encoding='utf-8') as f:
+            # Load YAML or JSON based on file extension
+            if config_file.suffix in ['.yaml', '.yml']:
+                data = yaml.safe_load(f)
+            else:
+                data = json.load(f)
+
         if not data or 'mcp' not in data:
+            print(f"Warning: No 'mcp' section found in config file {config_file}")
             return MCPConfig(enabled=False, services=[])
-        
+
         mcp_data = data['mcp']
-        
+
         # Parse services
         services = []
         for service_data in mcp_data.get('services', []):
@@ -145,7 +155,7 @@ def load_mcp_config(config_path: Optional[str] = None) -> MCPConfig:
                 key=auth_data.get('key'),
                 header=auth_data.get('header', 'Authorization')
             )
-            
+
             service = ServiceConfig(
                 name=service_data['name'],
                 enabled=service_data.get('enabled', True),
@@ -158,17 +168,21 @@ def load_mcp_config(config_path: Optional[str] = None) -> MCPConfig:
                 priority=service_data.get('priority', 999)
             )
             services.append(service)
-        
+
+        print(f"✓ Loaded MCP config from {config_file} with {len(services)} services")
+
         return MCPConfig(
             enabled=mcp_data.get('enabled', True),
             default_timeout=mcp_data.get('default_timeout', 5),
             default_retries=mcp_data.get('default_retries', 3),
             services=services
         )
-    
+
     except Exception as e:
         # Return default config on error
-        print(f"Warning: Failed to load MCP config: {e}")
+        import traceback
+        print(f"Warning: Failed to load MCP config from {config_file}: {e}")
+        traceback.print_exc()
         return MCPConfig(enabled=False, services=[])
 
 

@@ -198,8 +198,7 @@ class MCPClient:
         查询REST服务
         Query REST service
         
-        Note: This is a placeholder implementation that simulates REST calls.
-        In production, this would use requests library to make actual HTTP calls.
+        如果 endpoint 包含 example.com，则使用模拟响应；否则执行真实HTTP请求。
         """
         try:
             # Build request payload
@@ -209,17 +208,41 @@ class MCPClient:
             headers = service.authentication.get_auth_header() or {}
             headers['Content-Type'] = 'application/json'
             
-            # Simulate REST call (placeholder)
-            # In production: response = requests.post(service.endpoint, json=payload, headers=headers, timeout=service.timeout)
+            # 当使用示例域名时，走模拟路径，确保测试与演示稳定
+            if 'example.com' in service.endpoint:
+                logger.debug(f"[{request_id}] REST simulated call to {service.endpoint} with payload: {payload}")
+                simulated_response = self._simulate_service_response(service, query)
+                return self._normalize_response(simulated_response, service.name)
             
-            # For now, simulate a successful response
+            # 真实HTTP请求
+            import requests
             logger.debug(f"[{request_id}] REST call to {service.endpoint} with payload: {payload}")
+            resp = requests.post(
+                service.endpoint,
+                json=payload,
+                headers=headers,
+                timeout=service.timeout
+            )
             
-            # Simulate response based on service
-            simulated_response = self._simulate_service_response(service, query)
+            # 优先解析JSON
+            try:
+                raw = resp.json()
+                # 若返回不包含标准字段，做轻度包装
+                if not isinstance(raw, dict) or 'content' not in raw:
+                    raw = {
+                        'content': str(raw),
+                        'confidence': 0.8,
+                        'data': {'status_code': resp.status_code}
+                    }
+            except Exception:
+                # 非JSON响应，作为文本包装
+                raw = {
+                    'content': resp.text,
+                    'confidence': 0.7,
+                    'data': {'status_code': resp.status_code}
+                }
             
-            # Normalize response
-            return self._normalize_response(simulated_response, service.name)
+            return self._normalize_response(raw, service.name)
         
         except Exception as e:
             logger.error(f"[{request_id}] REST service error: {e}")

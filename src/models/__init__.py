@@ -1,7 +1,13 @@
-"""
-虚拟女友模型模块
-Virtual Girlfriend Models Module
-"""
-from .inference import GirlfriendChatModel, generate_girlfriend_reply, get_model_instance
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from .inference import (
+    init_model,
+    generate_girlfriend_reply,
+    GirlfriendChatModel,
+)
 
-__all__ = ['GirlfriendChatModel', 'generate_girlfriend_reply', 'get_model_instance']
+__all__ = [
+    "init_model",
+    "generate_girlfriend_reply",
+    "GirlfriendChatModel",
+]

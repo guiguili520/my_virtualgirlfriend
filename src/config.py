@@ -39,7 +39,7 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 # 推理增强配置
 # Inference Enhancement Configuration
 ENABLE_ENHANCEMENT = True  # 全局开关
-ENHANCEMENT_MIN_QUERY_LENGTH = 10  # 触发增强的最小查询长度
+ENHANCEMENT_MIN_QUERY_LENGTH = 5  # 触发增强的最小查询长度
 ENHANCEMENT_KEYWORDS = [
     "什么", "为什么", "怎么", "如何", "谁", "哪里", "哪个", "多少",
     "什么时候", "是否", "能不能", "可以吗", "告诉我", "查一下"

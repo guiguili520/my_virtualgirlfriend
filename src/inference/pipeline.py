@@ -21,6 +21,7 @@ from config import (
     PERSONA_EMOJI_PROBABILITY
 )
 from enhance import Ranker, Deduplicator, Summarizer, PersonaHelper
+from mcp import MCPClient
 from models.inference import GirlfriendChatModel
 
 # 配置日志
@@ -50,6 +51,9 @@ class InferencePipeline:
         
         # 初始化模型
         self.model = GirlfriendChatModel(model_path=model_path, use_mock=use_mock_model)
+        
+        # 初始化MCP客户端
+        self.mcp_client = MCPClient()
         
         logger.info("InferencePipeline initialized")
     
@@ -235,11 +239,16 @@ class InferencePipeline:
         # 调用MCP（如果启用）
         if ENABLE_MCP:
             try:
-                mcp_results = self._mock_mcp(query)
-                all_results.extend(mcp_results)
-                if mcp_results:
+                domain = self._detect_mcp_domain(query)
+                mcp_resp = self.mcp_client.fetch(domain, query)
+                if mcp_resp.success and mcp_resp.content:
+                    all_results.append({
+                        "content": mcp_resp.content,
+                        "source": "mcp",
+                        "score": float(mcp_resp.confidence)
+                    })
                     sources.append("mcp")
-                logger.info(f"Got {len(mcp_results)} MCP results")
+                logger.info(f"Got MCP response success={mcp_resp.success}")
             except Exception as e:
                 logger.warning(f"MCP failed: {e}")
         
@@ -258,6 +267,17 @@ class InferencePipeline:
         summary = self.summarizer.summarize(deduped_results, query)
         
         return summary, sources
+    
+    def _detect_mcp_domain(self, query: str) -> str:
+        """
+        基于简单关键词从查询中检测MCP域
+        """
+        q = query.lower()
+        if any(k in q for k in ["天气", "weather", "温度", "气候"]):
+            return "weather"
+        if any(k in q for k in ["新闻", "news", "头条", "热点"]):
+            return "news"
+        return "facts"
     
     def _build_prompt(
         self,
