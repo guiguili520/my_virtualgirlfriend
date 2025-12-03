@@ -44,12 +44,12 @@ class Summarizer:
         for result in results:
             content = result.get('content', '')
             source = result.get('source', 'unknown')
-            
+
             # 截取适当长度
             snippet = self._extract_snippet(content, query)
-            
-            # 检查是否超出最大长度
-            point_text = f"[{source}] {snippet}"
+
+            # 检查是否超出最大长度 (不再添加[source]标签)
+            point_text = snippet
             if total_length + len(point_text) > self.max_length:
                 # 如果加上这条会超长，则截断或跳过
                 remaining = self.max_length - total_length
@@ -57,7 +57,7 @@ class Summarizer:
                     point_text = point_text[:remaining] + "..."
                     key_points.append(point_text)
                 break
-            
+
             key_points.append(point_text)
             total_length += len(point_text)
         

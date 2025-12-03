@@ -20,30 +20,33 @@ The MCP module provides multi-service content provider functionality to enhance 
 
 ### 1. 配置服务
 
-编辑 `enhance_config.yaml` 文件配置MCP服务：
+编辑 `mcp.json` 文件配置MCP服务：
 
-```yaml
-mcp:
-  enabled: true  # 全局启用/禁用
-  default_timeout: 5
-  default_retries: 3
-  
-  services:
-    - name: weather_service
-      enabled: true
-      endpoint: https://api.weather.example.com/v1/query
-      protocol: rest
-      authentication:
-        type: api_key
-        key: WEATHER_API_KEY  # 环境变量或实际密钥
-        header: X-API-Key
-      domains:
-        - weather
-        - forecast
-        - temperature
-      timeout: 5
-      retries: 3
-      priority: 1  # 优先级（数字越小优先级越高）
+```json
+{
+  "mcp": {
+    "enabled": true,  // 全局启用/禁用
+    "default_timeout": 5,
+    "default_retries": 3,
+    "services": [
+      {
+        "name": "weather_service",
+        "enabled": true,
+        "endpoint": "https://api.weather.example.com/v1/query",
+        "protocol": "rest",
+        "authentication": {
+          "type": "api_key",
+          "key": "WEATHER_API_KEY",  // 环境变量或实际密钥
+          "header": "X-API-Key"
+        },
+        "domains": ["weather", "forecast", "temperature"],
+        "timeout": 5,
+        "retries": 3,
+        "priority": 1  // 优先级（数字越小优先级越高）
+      }
+    ]
+  }
+}
 ```
 
 ### 2. 使用客户端
@@ -143,7 +146,7 @@ print(f"启用的服务: {status['enabled_services']}/{status['total_services']}
 初始化MCP客户端。
 
 **参数:**
-- `config_path`: 配置文件路径（默认：项目根目录的 enhance_config.yaml）
+- `config_path`: 配置文件路径（默认：项目根目录的 mcp.json）
 
 #### `fetch(domain: str, query: str, **kwargs) -> MCPResponse`
 

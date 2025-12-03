@@ -11,18 +11,21 @@ import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-# 添加项目根目录到 Python 路径
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# 确保项目根目录在 Python 路径中
+project_root = str(Path(__file__).parent.parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
-from config import (
+# 使用绝对导入（避免与 web 目录的模块冲突）
+from src.config import (
     ENABLE_ENHANCEMENT, ENHANCEMENT_MIN_QUERY_LENGTH, ENHANCEMENT_KEYWORDS,
     ENABLE_NETWORK_SEARCH, ENABLE_MCP,
     RANKING_TOP_K, DEDUP_SIMILARITY_THRESHOLD, SUMMARY_MAX_LENGTH,
     PERSONA_EMOJI_PROBABILITY
 )
-from enhance import Ranker, Deduplicator, Summarizer, PersonaHelper
-from mcp import MCPClient
-from models.inference import GirlfriendChatModel
+from src.enhance import Ranker, Deduplicator, Summarizer, PersonaHelper
+from src.mcp import MCPClient
+from src.models.inference import GirlfriendChatModel
 
 # 配置日志
 logging.basicConfig(
@@ -35,7 +38,7 @@ logger = logging.getLogger(__name__)
 class InferencePipeline:
     """推理流水线"""
     
-    def __init__(self, model_path: Optional[str] = None, use_mock_model: bool = True):
+    def __init__(self, model_path: Optional[str] = None, use_mock_model: bool = False):
         """
         初始化推理流水线
         
@@ -240,7 +243,9 @@ class InferencePipeline:
         if ENABLE_MCP:
             try:
                 domain = self._detect_mcp_domain(query)
+                logger.info(f"Calling MCP service for domain: {domain}")
                 mcp_resp = self.mcp_client.fetch(domain, query)
+
                 if mcp_resp.success and mcp_resp.content:
                     all_results.append({
                         "content": mcp_resp.content,
@@ -248,9 +253,11 @@ class InferencePipeline:
                         "score": float(mcp_resp.confidence)
                     })
                     sources.append("mcp")
-                logger.info(f"Got MCP response success={mcp_resp.success}")
+                    logger.info(f"MCP response success: {mcp_resp.content[:100]}...")
+                else:
+                    logger.warning(f"MCP response failed or empty: success={mcp_resp.success}, error={mcp_resp.error}")
             except Exception as e:
-                logger.warning(f"MCP failed: {e}")
+                logger.error(f"MCP call failed with exception: {e}", exc_info=True)
         
         # 如果没有任何结果，返回空
         if not all_results:
@@ -270,13 +277,27 @@ class InferencePipeline:
     
     def _detect_mcp_domain(self, query: str) -> str:
         """
-        基于简单关键词从查询中检测MCP域
+        基于关键词从查询中检测MCP域
         """
         q = query.lower()
-        if any(k in q for k in ["天气", "weather", "温度", "气候"]):
+
+        # 天气相关关键词（优先级最高）
+        weather_keywords = [
+            "天气", "weather", "温度", "气温", "气候", "下雨", "下雪",
+            "晴天", "阴天", "多云", "预报", "forecast", "冷", "热",
+            "穿什么", "带伞"
+        ]
+        if any(k in q for k in weather_keywords):
+            logger.info(f"Detected MCP domain: weather (query: {query[:30]}...)")
             return "weather"
-        if any(k in q for k in ["新闻", "news", "头条", "热点"]):
+
+        # 新闻相关关键词
+        news_keywords = ["新闻", "news", "头条", "热点", "最新消息", "报道"]
+        if any(k in q for k in news_keywords):
+            logger.info(f"Detected MCP domain: news (query: {query[:30]}...)")
             return "news"
+
+        logger.info(f"Detected MCP domain: facts (default, query: {query[:30]}...)")
         return "facts"
     
     def _build_prompt(
@@ -287,21 +308,29 @@ class InferencePipeline:
     ) -> str:
         """
         构建增强的提示词
-        
+
         Args:
             input_text: 用户输入
             history: 对话历史
             augmented_context: 增强上下文
-            
+
         Returns:
             完整的提示词
         """
         # 如果有增强上下文，添加到提示词中
         if augmented_context:
-            prompt = f"[参考信息: {augmented_context}]\n\n{input_text}"
+            # 移除来源标签，保持内容纯净
+            clean_context = augmented_context.replace("[mcp] ", "").replace("[search] ", "")
+            prompt = f"""【参考信息】
+{clean_context}
+
+【用户问题】
+{input_text}
+
+请根据上述参考信息回答用户问题，确保包含关键数据。"""
         else:
             prompt = input_text
-        
+
         return prompt
     
     def _mock_search(self, query: str) -> List[Dict[str, Any]]:
@@ -370,13 +399,13 @@ class InferencePipeline:
 _pipeline_instance: Optional[InferencePipeline] = None
 
 
-def get_pipeline(model_path: Optional[str] = None, use_mock_model: bool = True) -> InferencePipeline:
+def get_pipeline(model_path: Optional[str] = None, use_mock_model: bool = False) -> InferencePipeline:
     """
     获取流水线实例（单例模式）
-    
+
     Args:
         model_path: 模型路径
-        use_mock_model: 是否使用模拟模型
+        use_mock_model: 是否使用模拟模型（默认False，使用真实模型）
         
     Returns:
         流水线实例

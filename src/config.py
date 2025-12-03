@@ -39,10 +39,15 @@ LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 # 推理增强配置
 # Inference Enhancement Configuration
 ENABLE_ENHANCEMENT = True  # 全局开关
-ENHANCEMENT_MIN_QUERY_LENGTH = 5  # 触发增强的最小查询长度
+ENHANCEMENT_MIN_QUERY_LENGTH = 4  # 触发增强的最小查询长度
 ENHANCEMENT_KEYWORDS = [
+    # 疑问词
     "什么", "为什么", "怎么", "如何", "谁", "哪里", "哪个", "多少",
-    "什么时候", "是否", "能不能", "可以吗", "告诉我", "查一下"
+    "什么时候", "是否", "能不能", "可以吗", "告诉我", "查一下",
+    # 天气相关
+    "天气", "气温", "温度", "下雨", "下雪", "预报",
+    # 新闻相关
+    "新闻", "头条", "热点"
 ]  # 触发增强的关键词
 
 # 网络搜索配置

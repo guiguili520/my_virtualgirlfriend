@@ -45,6 +45,7 @@ venv.bak/
 
 # IDE
 .vscode/
+.claude
 .idea/
 *.swp
 *.swo
@@ -92,3 +93,11 @@ data/validation/*.json
 web/uploads/*
 !web/uploads/.gitkeep
 web/data/chat_history.json
+
+# MCP 配置和密钥（敏感信息）
+mcp.json
+enhance_config.yaml
+
+# 测试文件
+test_*.py
+verify_*.py

@@ -98,11 +98,11 @@
 }
 
 /* 输入框自动高度调整 */
-#message-input {
-    min-height: 48px;
-    max-height: 150px;
-    transition: height 0.2s;
-}
+/*#message-input {*/
+/*    min-height: 48px;*/
+/*    max-height: 150px;*/
+/*    transition: height 0.2s;*/
+/*}*/
 
 /* 按钮悬停效果 */
 button:active {
@@ -248,4 +248,93 @@ button:active {
 .empty-state-icon {
     font-size: 64px;
     margin-bottom: 16px;
+}
+
+/* 修复消息行对齐 */
+#chat-messages > div {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+/* 用户消息右对齐 */
+#chat-messages > div.flex-row-reverse {
+    /*justify-content: flex-end;*/
+}
+
+/* 女友消息左对齐 */
+#chat-messages > div:not(.flex-row-reverse) {
+    justify-content: flex-start;
+}
+
+/* 确保消息气泡最大宽度一致 */
+.message-content {
+    display: flex;
+    flex-direction: column;
+    max-width: 70%;
+}
+
+/* 修复头像大小和对齐 */
+.avatar {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+/* 确保时间戳对齐 */
+.message-time {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    margin-top: 4px;
+}
+
+/* 用户消息时间戳右对齐 */
+.user-message .message-time {
+    text-align: right;
+    margin-right: 8px;
+}
+
+/* 女友消息时间戳左对齐 */
+.girlfriend-message .message-time {
+    text-align: left;
+    margin-left: 8px;
+}
+
+/* 统一消息间距 */
+#chat-messages {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* 输入区域布局修复 */
+.input-area {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 16px;
+    border-top: 1px solid #e5e7eb;
+    background-color: #f9fafb;
+}
+
+/* 按钮高度统一 */
+.input-area button,
+.input-area label {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 输入框与按钮对齐 */
+#message-input {
+    /*min-height: 48px;*/
+    height: 100% !important;
+    padding: 12px 16px;
+    border-radius: 12px;
 }

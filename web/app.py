@@ -12,11 +12,9 @@ from pathlib import Path
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
-# 添加 src 目录到 Python 路径
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-# 添加 web 目录到 Python 路径（优先）
-sys.path.insert(0, str(Path(__file__).parent))
+# 添加项目根目录到 Python 路径（必须最先添加）
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
     from flask import Flask, render_template, request, jsonify, send_from_directory
@@ -27,8 +25,14 @@ except ImportError:
     print("错误: 未安装 Flask。请运行: pip install flask flask-cors")
     sys.exit(1)
 
-import config as web_config
-from models.inference import init_model, generate_girlfriend_reply
+# 导入 web 配置（使用相对路径导入避免冲突）
+import importlib.util
+web_config_path = Path(__file__).parent / "config.py"
+spec = importlib.util.spec_from_file_location("web_config", web_config_path)
+web_config = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(web_config)
+
+from src.inference.pipeline import run_chat
 
 
 app = Flask(__name__)
@@ -36,10 +40,39 @@ app.config['SECRET_KEY'] = web_config.SECRET_KEY
 app.config['MAX_CONTENT_LENGTH'] = web_config.MAX_CONTENT_LENGTH
 CORS(app)
 
-# 在应用启动时初始化模型（加载本地大模型）
-print("\n🚀 初始化虚拟女友模型...\n")
-init_model(model_path="./models")
-print()
+# 在应用启动时初始化推理流水线（加载本地大模型）
+print("\n🚀 初始化虚拟女友推理流水线...\n")
+print("💡 注意: 正在加载真实大模型，可能需要几分钟时间...\n")
+
+# 初始化推理流水线
+def initialize_inference_pipeline():
+    """初始化推理流水线，支持自动降级"""
+    try:
+        from src.inference.pipeline import get_pipeline
+
+        # 尝试加载真实模型
+        print("   正在加载真实大模型...")
+        pipeline = get_pipeline(use_mock_model=False)
+
+        if pipeline.model.use_mock:
+            print("   ⚠️  模型加载失败，已自动降级到模拟模式")
+            print("   模型文件提示: 请确保 ./models 目录存在且包含模型文件")
+        else:
+            print("   ✅ 真实大模型加载成功！")
+
+        return pipeline
+    except Exception as e:
+        print(f"   ❌ 推理流水线初始化失败: {e}")
+        print("   💡 错误详情: 请检查模型文件或系统环境")
+        raise
+
+# 应用启动时初始化
+try:
+    pipeline = initialize_inference_pipeline()
+    print("   ✅ Web应用初始化完成，可以开始聊天了！\n")
+except Exception as e:
+    print(f"   ❌ 应用启动失败: {e}\n")
+    raise
 
 
 def load_chat_history():
@@ -106,8 +139,13 @@ def chat():
             if msg['type'] == 'text'
         ]
         
-        # 生成虚拟女友的回复
-        girlfriend_reply = generate_girlfriend_reply(user_message, context)
+        # 使用推理流水线生成回复（支持MCP和联网搜索）
+        result = run_chat(
+            user_message,
+            history=context,
+            opts={"enable_enhancement": True}
+        )
+        girlfriend_reply = result["response"]
         
         # 保存到历史记录
         timestamp = datetime.now().isoformat()
@@ -185,8 +223,9 @@ def upload_image():
             }
             history.append(image_msg)
             
-            # 生成女友的回复
-            girlfriend_reply = generate_girlfriend_reply("发送了一张图片")
+            # 使用推理流水线生成回复
+            result = run_chat("发送了一张图片", opts={"enable_enhancement": False})
+            girlfriend_reply = result["response"]
             girlfriend_msg = {
                 'sender': 'girlfriend',
                 'type': 'text',
@@ -267,8 +306,11 @@ def main():
     print(f"🌐 访问地址: http://localhost:{web_config.PORT}")
     print(f"🌐 Access URL: http://localhost:{web_config.PORT}")
     print()
-    print("⚠️  当前使用模拟模式（Mock Mode）")
-    print("   如需使用真实模型，请在 src/models/inference.py 中配置模型路径")
+    print("✨ 功能特性:")
+    print("   • 本地大模型推理 (Qwen2.5-7B)")
+    print("   • MCP服务集成 (天气、新闻、知识)")
+    print("   • 联网搜索增强")
+    print("   • 智能对话历史")
     print()
     print("🛑 按 Ctrl+C 停止服务")
     print("🛑 Press Ctrl+C to stop")

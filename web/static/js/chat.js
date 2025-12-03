@@ -107,6 +107,79 @@ function addMessage(sender, type, content, timestamp) {
     updateMessageCount();
 }
 
+// 添加消息但不触发滚动（用于批量加载历史）
+function addMessageWithoutScroll(sender, type, content, timestamp) {
+    const messagesContainer = document.getElementById('chat-messages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'flex items-start space-x-3 animate-fade-in';
+
+    if (sender === 'user') {
+        messageDiv.className += ' flex-row-reverse space-x-reverse';
+    }
+
+    // 头像
+    const avatar = document.createElement('div');
+    avatar.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden';
+
+    if (sender === 'girlfriend') {
+        avatar.className += ' bg-gradient-to-br from-pink-200 to-pink-300';
+        avatar.innerHTML = '<img src="/static/images/girlfriend.jpg" alt="Girlfriend" class="w-full h-full object-cover">';
+    } else {
+        avatar.className += ' bg-gradient-to-br from-blue-200 to-blue-300';
+        avatar.innerHTML = '<span class="text-xl">👤</span>';
+    }
+
+    // 消息内容容器
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'flex flex-col max-w-md';
+
+    if (sender === 'user') {
+        contentDiv.className += ' items-end';
+    }
+
+    // 消息气泡
+    const bubble = document.createElement('div');
+    bubble.className = 'rounded-2xl px-4 py-3 shadow-sm';
+
+    if (sender === 'girlfriend') {
+        bubble.className += ' bg-girlfriend-bubble text-gray-800 rounded-tl-sm';
+    } else {
+        bubble.className += ' bg-user-bubble text-gray-800 rounded-tr-sm';
+    }
+
+    // 根据消息类型显示内容
+    if (type === 'text') {
+        const textContent = document.createElement('p');
+        textContent.textContent = content;
+        textContent.className = 'whitespace-pre-wrap break-words';
+        bubble.appendChild(textContent);
+    } else if (type === 'image') {
+        const img = document.createElement('img');
+        img.src = `/uploads/${content}`;
+        img.alt = 'Uploaded image';
+        img.className = 'message-image';
+        img.onclick = () => showImagePreview(img.src);
+        bubble.appendChild(img);
+    }
+
+    contentDiv.appendChild(bubble);
+
+    // 时间戳
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'text-xs text-gray-400 mt-1 ml-2';
+    if (sender === 'user') {
+        timeSpan.className += ' mr-2 text-right';
+    }
+    timeSpan.textContent = formatTime(timestamp);
+    contentDiv.appendChild(timeSpan);
+
+    messageDiv.appendChild(avatar);
+    messageDiv.appendChild(contentDiv);
+
+    messagesContainer.appendChild(messageDiv);
+    // 注意：这里不调用 scrollToBottom() 和 updateMessageCount()
+}
+
 // 添加带本地图片的消息（用于立即预览）
 function addMessageWithLocalImage(sender, localImageUrl, timestamp, messageId) {
     const messagesContainer = document.getElementById('chat-messages');
@@ -183,9 +256,20 @@ function removeMessage(messageId) {
 }
 
 // 滚动到底部
-function scrollToBottom() {
+function scrollToBottom(immediate = false) {
     const messagesContainer = document.getElementById('chat-messages');
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+    if (immediate) {
+        // 立即滚动（用于加载历史后）
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    } else {
+        // 使用 requestAnimationFrame 确保 DOM 更新后再滚动
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            });
+        });
+    }
 }
 
 // 更新消息计数
@@ -345,23 +429,26 @@ async function loadChatHistory() {
     try {
         const response = await fetch('/api/history');
         const data = await response.json();
-        
+
         if (data.status === 'success' && data.history.length > 0) {
-            // 清空现有消息（保留欢迎消息）
             const messagesContainer = document.getElementById('chat-messages');
             const welcomeMessage = messagesContainer.firstElementChild;
             messagesContainer.innerHTML = '';
             messagesContainer.appendChild(welcomeMessage);
-            
-            // 添加历史消息
+
+            // 批量添加消息，不触发单条滚动
             data.history.forEach(msg => {
-                addMessage(msg.sender, msg.type, msg.content, msg.timestamp);
+                addMessageWithoutScroll(msg.sender, msg.type, msg.content, msg.timestamp);
             });
-            
-            // 加载完成后滚动到底部
-            scrollToBottom();
+
+            // 等待 DOM 完全更新后再滚动到底部
+            await new Promise(resolve => setTimeout(resolve, 100));
+            scrollToBottom(true);
+
+            // 更新消息计数
+            updateMessageCount();
         }
-        
+
     } catch (error) {
         console.error('加载历史记录失败:', error);
     }

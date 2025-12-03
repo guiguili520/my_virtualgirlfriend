@@ -110,80 +110,153 @@ def load_mcp_config(config_path: Optional[str] = None) -> MCPConfig:
     加载MCP配置文件
     Load MCP configuration file (supports both JSON and YAML)
 
-    Args:
-        config_path: 配置文件路径，默认为项目根目录下的enhance_config.yaml或mcp.json
-                    Path to config file, defaults to enhance_config.yaml or mcp.json in project root
-
-    Returns:
-        MCPConfig: 解析后的配置对象 / Parsed configuration object
+    只从 mcp.json 读取配置
+    Only reads configuration from mcp.json
     """
     project_root = Path(__file__).parent.parent.parent
 
     if config_path is None:
-        # Try to find config file: enhance_config.yaml first, then mcp.json
-        config_file = project_root / "enhance_config.yaml"
-        if not config_file.exists():
-            config_file = project_root / "mcp.json"
+        # 只从 mcp.json 读取
+        config_file = project_root / "mcp.json"
     else:
         config_file = Path(config_path)
 
     if not config_file.exists():
-        # Return default config if file doesn't exist
         print(f"Warning: MCP config file not found at {config_file}")
         return MCPConfig(enabled=False, services=[])
 
     try:
         with open(config_file, 'r', encoding='utf-8') as f:
-            # Load YAML or JSON based on file extension
             if config_file.suffix in ['.yaml', '.yml']:
                 data = yaml.safe_load(f)
             else:
                 data = json.load(f)
 
-        if not data or 'mcp' not in data:
-            print(f"Warning: No 'mcp' section found in config file {config_file}")
+        if not data:
+            print(f"Warning: Empty config file {config_file}")
             return MCPConfig(enabled=False, services=[])
 
-        mcp_data = data['mcp']
+        # 支持两种格式：
+        # 1. mcp.services 格式（详细配置）
+        # 2. mcpServers 格式（简洁配置）
 
-        # Parse services
-        services = []
-        for service_data in mcp_data.get('services', []):
-            auth_data = service_data.get('authentication', {})
-            auth_config = AuthConfig(
-                type=auth_data.get('type', 'none'),
-                key=auth_data.get('key'),
-                header=auth_data.get('header', 'Authorization')
-            )
-
-            service = ServiceConfig(
-                name=service_data['name'],
-                enabled=service_data.get('enabled', True),
-                endpoint=service_data['endpoint'],
-                protocol=service_data.get('protocol', 'rest'),
-                authentication=auth_config,
-                domains=service_data.get('domains', []),
-                timeout=service_data.get('timeout', mcp_data.get('default_timeout', 5)),
-                retries=service_data.get('retries', mcp_data.get('default_retries', 3)),
-                priority=service_data.get('priority', 999)
-            )
-            services.append(service)
-
-        print(f"✓ Loaded MCP config from {config_file} with {len(services)} services")
-
-        return MCPConfig(
-            enabled=mcp_data.get('enabled', True),
-            default_timeout=mcp_data.get('default_timeout', 5),
-            default_retries=mcp_data.get('default_retries', 3),
-            services=services
-        )
+        if 'mcp' in data:
+            # 详细配置格式
+            return _parse_detailed_config(data['mcp'], config_file)
+        elif 'mcpServers' in data:
+            # 简洁配置格式
+            return _parse_simple_config(data['mcpServers'], config_file)
+        else:
+            print(f"Warning: No 'mcp' or 'mcpServers' section found in {config_file}")
+            return MCPConfig(enabled=False, services=[])
 
     except Exception as e:
-        # Return default config on error
         import traceback
         print(f"Warning: Failed to load MCP config from {config_file}: {e}")
         traceback.print_exc()
         return MCPConfig(enabled=False, services=[])
+
+
+def _parse_detailed_config(mcp_data: Dict, config_file: Path) -> MCPConfig:
+    """解析详细配置格式（mcp.services）"""
+    services = []
+    for service_data in mcp_data.get('services', []):
+        auth_data = service_data.get('authentication', {})
+        auth_config = AuthConfig(
+            type=auth_data.get('type', 'none'),
+            key=auth_data.get('key'),
+            header=auth_data.get('header', 'Authorization')
+        )
+
+        service = ServiceConfig(
+            name=service_data['name'],
+            enabled=service_data.get('enabled', True),
+            endpoint=service_data['endpoint'],
+            protocol=service_data.get('protocol', 'rest'),
+            authentication=auth_config,
+            domains=service_data.get('domains', []),
+            timeout=service_data.get('timeout', mcp_data.get('default_timeout', 5)),
+            retries=service_data.get('retries', mcp_data.get('default_retries', 3)),
+            priority=service_data.get('priority', 999)
+        )
+        services.append(service)
+
+    print(f"✓ Loaded MCP config from {config_file} with {len(services)} services")
+
+    return MCPConfig(
+        enabled=mcp_data.get('enabled', True),
+        default_timeout=mcp_data.get('default_timeout', 5),
+        default_retries=mcp_data.get('default_retries', 3),
+        services=services
+    )
+
+
+def _parse_simple_config(servers_data: Dict, config_file: Path) -> MCPConfig:
+    """
+    解析简洁配置格式（mcpServers）
+
+    简洁格式示例：
+    {
+      "mcpServers": {
+        "weather": {
+          "type": "streamable_http",
+          "url": "https://..."
+        }
+      }
+    }
+    """
+    services = []
+    priority = 1
+
+    for name, server_data in servers_data.items():
+        # 从简洁格式推断domains（基于服务名称）
+        domains = _infer_domains_from_name(name)
+
+        service = ServiceConfig(
+            name=name,
+            enabled=True,
+            endpoint=server_data.get('url', server_data.get('endpoint', '')),
+            protocol='rest',  # streamable_http 等同于 rest
+            authentication=AuthConfig(type='none'),
+            domains=domains,
+            timeout=5,
+            retries=3,
+            priority=priority
+        )
+        services.append(service)
+        priority += 1
+
+    print(f"✓ Loaded MCP config (simple format) from {config_file} with {len(services)} services")
+
+    return MCPConfig(
+        enabled=True,
+        default_timeout=5,
+        default_retries=3,
+        services=services
+    )
+
+
+def _infer_domains_from_name(name: str) -> List[str]:
+    """根据服务名称推断处理的域"""
+    name_lower = name.lower()
+
+    # 预定义的域映射
+    domain_mappings = {
+        'weather': ['weather', 'forecast', 'temperature', 'climate', '天气', '温度'],
+        'map': ['maps', 'location', 'navigation', 'poi', '地图', '导航'],
+        'amap': ['maps', 'location', 'navigation', 'poi', '地图', '导航', '高德'],
+        'news': ['news', 'headlines', 'current_events', '新闻'],
+        'search': ['search', 'query', '搜索'],
+        'translate': ['translation', 'language', '翻译'],
+    }
+
+    # 尝试匹配
+    for key, domains in domain_mappings.items():
+        if key in name_lower:
+            return domains
+
+    # 默认使用服务名称作为域
+    return [name_lower]
 
 
 def validate_config(config: MCPConfig) -> List[str]:

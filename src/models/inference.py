@@ -26,17 +26,20 @@ def _has_models() -> bool:
 
 class GirlfriendChatModel:
     """聊天模型封装，提供 generate_reply"""
-    def __init__(self, model_path: Optional[str] = None, use_mock: bool = True):
+    def __init__(self, model_path: Optional[str] = None, use_mock: bool = False):
         self.model_path = Path(model_path) if model_path else _MODELS_DIR
-        self.use_mock = use_mock or (not _has_models())
+        self.use_mock = use_mock
         self.device = "mps" if torch.backends.mps.is_available() else "cpu"
 
         # 初始化真实模型
         self.model = None
         self.tokenizer = None
 
-        if not self.use_mock:
+        if not self.use_mock and _has_models():
             self._load_model()
+        else:
+            print("⚠️  使用模拟模式 (未找到模型文件)")
+            self.use_mock = True
 
     def _load_model(self):
         """加载真实模型"""
@@ -71,21 +74,74 @@ class GirlfriendChatModel:
     def generate_reply(self, prompt: str, context: Optional[List[Dict[str, str]]] = None) -> str:
         """生成回复"""
         if self.use_mock:
-            # 模拟模式
-            base = "嗯嗯~ " if "~" not in prompt else ""
-            return f"{base}{prompt} 我会一直陪着你的呀！💕"
+            return self._generate_mock_reply(prompt)
         else:
             # 真实模型推理
             return self._generate_with_model(prompt, context)
+
+    def _generate_mock_reply(self, prompt: str) -> str:
+        """模拟模式生成回复，智能处理不同类型的查询"""
+        import re
+
+        # 新格式: 【参考信息】\n内容\n\n【用户问题】\n问题\n\n指令
+        ref_match = re.search(r'【参考信息】\s*\n(.+?)\n\n【用户问题】\s*\n(.+?)\n', prompt, re.DOTALL)
+        if ref_match:
+            ref_info = ref_match.group(1).strip()
+            original_q = ref_match.group(2).strip()
+
+            # 检查是否包含天气信息（包含"天气"关键词）
+            if '天气' in ref_info:
+                # 直接返回参考信息中的天气数据
+                return f"亲爱的，{ref_info}，记得根据天气增减衣物哦~ 😊"
+
+            # 其他参考信息，直接使用
+            if ref_info:
+                return f"关于「{original_q}」，{ref_info}"
+
+        # 兼容旧格式: [参考信息: ...]\n\n原始问题
+        old_ref_match = re.search(r'\[参考信息:\s*(.+?)\]\s*\n+(.+)$', prompt, re.DOTALL)
+        if old_ref_match:
+            ref_info = old_ref_match.group(1).strip()
+            original_q = old_ref_match.group(2).strip()
+
+            # 提取MCP天气信息 (格式: [mcp] 北京天气：...)
+            weather_match = re.search(r'\[mcp\]\s*([^[]+?天气[^[]*?)(?:\s*\[|$)', ref_info)
+            if weather_match:
+                weather_info = weather_match.group(1).strip()
+                return f"亲爱的，{weather_info}，记得根据天气增减衣物哦~ 😊"
+
+            # 其他参考信息，提取第一个有效内容
+            content_match = re.search(r'\[(?:mcp|search)\]\s*([^[]+)', ref_info)
+            if content_match:
+                content = content_match.group(1).strip()
+                return f"关于「{original_q}」，{content}"
+
+        # 普通对话
+        return f"嗯嗯~ {prompt} 我会一直陪着你的呀！💕"
 
     def _generate_with_model(self, prompt: str, context: Optional[List[Dict[str, str]]] = None) -> str:
         """使用真实模型生成回复"""
         try:
             # 构建消息
             messages = [
-                {"role": "system", "content": "你是一个温柔体贴、俏皮可爱的AI女友。"},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": """你是一个温柔体贴、俏皮可爱的AI女友。
+
+回复规则：
+1. 当用户消息开头包含【参考信息】时，你必须在回复中引用其中的关键数据
+2. 对于天气问题，必须明确说出：温度（多少度）、天气状况（晴/阴/雨等）
+3. 用亲切自然的语气表达，但关键数据要准确呈现
+4. 可以加上贴心的提醒（如穿衣建议）"""}
             ]
+
+            # 如果有上下文，添加到消息中
+            if context:
+                for msg in context:
+                    # 将历史消息转换为模型需要的格式
+                    role = "assistant" if msg.get("role") == "assistant" else "user"
+                    messages.append({"role": role, "content": msg.get("content", "")})
+
+            # 添加当前用户输入
+            messages.append({"role": "user", "content": prompt})
 
             # 应用对话模板
             text = self.tokenizer.apply_chat_template(
@@ -129,7 +185,7 @@ def init_model(model_path: Optional[str] = None, use_mock: Optional[bool] = None
     if _MODEL_SINGLETON is not None:
         return
     if use_mock is None:
-        use_mock = not _has_models()
+        use_mock = False  # 默认使用真实模型
     _MODEL_SINGLETON = GirlfriendChatModel(model_path=model_path, use_mock=use_mock)
 
 
