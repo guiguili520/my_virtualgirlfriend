@@ -2,9 +2,23 @@
 
 ## 📁 目录说明
 
-本目录用于存放大语言模型文件及其相关配置。
+2.0 版本的聊天推理默认使用在线模型 API，本目录不再是 Web 聊天的必需项。
+本目录仍可用于训练脚本、LoRA 实验或离线模型资产存放。
 
-This directory is for storing large language models and their related configurations.
+Virtual Girlfriend 2.0 uses online model APIs for chat serving by default. This
+directory remains useful for training scripts and offline model experiments.
+
+## 🌐 2.0 在线模型配置
+
+```bash
+export VG_MODEL_PROVIDER=openai      # openai / anthropic / deepseek / glm / kimi
+export OPENAI_API_KEY=your-key
+
+export VG_MODEL_PROVIDER=anthropic
+export ANTHROPIC_API_KEY=your-key
+```
+
+也可以通过 `VG_MODEL_BASE_URL`、`VG_MODEL_NAME`、`VG_MODEL_API_FORMAT` 接入自定义 OpenAI/Anthropic 兼容服务。
 
 ## 🤖 推荐模型 / Recommended Models
 

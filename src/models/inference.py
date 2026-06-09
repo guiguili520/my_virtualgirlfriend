@@ -1,186 +1,129 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-虚拟女友模型推理接口
-Virtual Girlfriend Model Inference Interface
+Virtual Girlfriend 2.0 model inference interface.
 
-提供加载和调用大模型生成回复的功能
+2.0 uses online model APIs by default. Local model loading is no longer part of
+the chat serving path; when no API key is configured the wrapper falls back to a
+small mock responder so the web app and tests still run.
 """
-import sys
-import random
-from pathlib import Path
+from __future__ import annotations
 
-# 添加项目根目录到 Python 路径
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from typing import Any, Dict, List, Optional
 
-from scenarios import SCENARIO_CATALOG
+from .api_client import (
+    ModelSettings,
+    OnlineModelClient,
+    get_provider_presets,
+    resolve_model_settings,
+)
+
+_MODEL_SINGLETON: Optional["GirlfriendChatModel"] = None
 
 
 class GirlfriendChatModel:
-    """虚拟女友聊天模型"""
-    
-    def __init__(self, model_path=None, use_mock=True):
-        """
-        初始化模型
-        
-        Args:
-            model_path: 模型路径（如果使用真实模型）
-            use_mock: 是否使用模拟模式（默认True，用于演示）
-        """
+    """Unified online model wrapper used by the inference pipeline."""
+
+    def __init__(
+        self,
+        model_path: Optional[str] = None,
+        use_mock: bool = False,
+        provider: Optional[str] = None,
+        api_format: Optional[str] = None,
+        model: Optional[str] = None,
+        base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        client: Optional[OnlineModelClient] = None,
+    ):
+        # model_path is kept only for backwards compatibility with old callers.
         self.model_path = model_path
-        self.use_mock = use_mock
-        self.model = None
-        self.tokenizer = None
-        
-        if not use_mock and model_path:
-            self._load_model()
-        
-    def _load_model(self):
-        """加载真实的大模型"""
-        try:
-            from transformers import AutoModelForCausalLM, AutoTokenizer
-            import torch
-            
-            print(f"正在加载模型: {self.model_path}")
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_path,
-                torch_dtype=torch.float16,
-                device_map="auto"
-            )
-            print("模型加载完成！")
-        except ImportError:
-            print("警告: 未安装 transformers 库，将使用模拟模式")
-            self.use_mock = True
-        except Exception as e:
-            print(f"模型加载失败: {e}，将使用模拟模式")
-            self.use_mock = True
-    
-    def generate_reply(self, user_message, context=None):
-        """
-        生成虚拟女友的回复
-        
-        Args:
-            user_message: 用户输入的消息
-            context: 对话上下文（可选）
-            
-        Returns:
-            str: 虚拟女友的回复
-        """
-        if self.use_mock:
-            return self._generate_mock_reply(user_message)
-        else:
-            return self._generate_model_reply(user_message, context)
-    
-    def _generate_mock_reply(self, user_message):
-        """生成模拟回复（用于演示）"""
-        message_lower = user_message.lower()
-        
-        # 根据关键词匹配场景并返回回复
-        for scenario in SCENARIO_CATALOG:
-            scenario_dict = scenario.to_dict() if hasattr(scenario, 'to_dict') else scenario
-            instruction = scenario_dict.get("instruction", "")
-            templates = scenario_dict.get("response_templates", [])
-            
-            # 简单的关键词匹配
-            if any(keyword in message_lower for keyword in self._extract_keywords(instruction)):
-                if templates:
-                    return random.choice(templates)
-        
-        # 如果没有匹配到，返回通用回复
-        default_replies = [
-            "嗯嗯，我在听呢~ 😊",
-            "你说的对哦！💕",
-            "好哒好哒~ ✨",
-            "哈哈，真有意思呀~ 🌸",
-            "我也这么想呢！💖",
-            "是嘛是嘛~ 说来听听呀~ 🎀",
-            "嘿嘿，你好可爱呀~ 💗",
-            "我明白你的意思啦~ 😘",
-            "真的吗？快跟我说说~ 🌟",
-            "好开心听你说这些~ 💝"
-        ]
-        
-        return random.choice(default_replies)
-    
-    def _extract_keywords(self, text):
-        """从文本中提取关键词"""
-        keywords = []
-        common_words = ['早上', '晚上', '开心', '难过', '工作', '学习', '吃饭', '睡觉', 
-                       '天气', '下雨', '喜欢', '爱', '想', '累', '加油', '生病', '感冒']
-        
-        for word in common_words:
-            if word in text:
-                keywords.append(word)
-        
-        return keywords
-    
-    def _generate_model_reply(self, user_message, context=None):
-        """使用真实模型生成回复"""
-        if not self.model or not self.tokenizer:
-            return self._generate_mock_reply(user_message)
-        
-        try:
-            # 构建提示词
-            system_prompt = """你是一个温柔体贴的虚拟女友，性格特点：
-- 温柔体贴，善解人意
-- 俏皮可爱，充满活力
-- 阳光开朗，积极向上
-- 关心对方，给予支持
+        self._forced_mock = use_mock
+        self.client = client or OnlineModelClient()
+        self.default_settings = resolve_model_settings(
+            provider=provider,
+            api_format=api_format,
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            use_mock=use_mock,
+        )
+        self.use_mock = self.default_settings.mock
 
-请用自然、亲密的语气回复，适当使用表情符号和语气词（呀、啦、呢、哦等）。"""
-            
-            # 添加上下文
-            conversation = system_prompt + "\n\n"
-            if context:
-                for msg in context[-5:]:  # 只保留最近5条对话
-                    role = "用户" if msg.get("role") == "user" else "女友"
-                    conversation += f"{role}: {msg.get('content')}\n"
-            
-            conversation += f"用户: {user_message}\n女友: "
-            
-            # 生成回复
-            inputs = self.tokenizer(conversation, return_tensors="pt").to(self.model.device)
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=150,
-                temperature=0.8,
-                top_p=0.9,
-                do_sample=True
-            )
-            
-            reply = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-            # 提取女友的回复部分
-            reply = reply.split("女友: ")[-1].strip()
-            
-            return reply
-            
-        except Exception as e:
-            print(f"模型推理失败: {e}")
-            return self._generate_mock_reply(user_message)
+    def generate_reply(
+        self,
+        prompt: str,
+        context: Optional[List[Dict[str, str]]] = None,
+        opts: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Generate a reply through the selected online API format."""
+        settings = self._settings_from_opts(opts or {})
+        response = self.client.generate(prompt, context, settings)
+        if not response:
+            return "抱歉呀，我刚才没有组织好语言~ 能再说一遍吗？😊"
+        self.use_mock = settings.mock
+        self.default_settings = settings
+        return response
+
+    def _settings_from_opts(self, opts: Dict[str, Any]) -> ModelSettings:
+        return resolve_model_settings(
+            provider=opts.get("model_provider") or opts.get("provider"),
+            api_format=opts.get("api_format") or opts.get("model_api_format"),
+            model=opts.get("model_name") or opts.get("model"),
+            base_url=opts.get("base_url") or opts.get("model_base_url"),
+            api_key=opts.get("api_key"),
+            use_mock=self._forced_mock or bool(opts.get("use_mock_model")),
+        )
+
+    def get_model_info(self, opts: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Return non-sensitive model settings for logs and UI."""
+        return self._settings_from_opts(opts or {}).public_dict()
 
 
-# 全局模型实例（延迟加载）
-_model_instance = None
+def init_model(
+    model_path: Optional[str] = None,
+    use_mock: Optional[bool] = None,
+    provider: Optional[str] = None,
+    api_format: Optional[str] = None,
+    model: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> None:
+    """Initialize the global model instance."""
+    global _MODEL_SINGLETON
+    if _MODEL_SINGLETON is not None:
+        return
+    _MODEL_SINGLETON = GirlfriendChatModel(
+        model_path=model_path,
+        use_mock=bool(use_mock),
+        provider=provider,
+        api_format=api_format,
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+    )
 
 
-def get_model_instance(model_path=None, use_mock=True):
-    """获取模型实例（单例模式）"""
-    global _model_instance
-    if _model_instance is None:
-        _model_instance = GirlfriendChatModel(model_path, use_mock)
-    return _model_instance
+def get_model_instance() -> GirlfriendChatModel:
+    global _MODEL_SINGLETON
+    if _MODEL_SINGLETON is None:
+        init_model()
+    assert _MODEL_SINGLETON is not None
+    return _MODEL_SINGLETON
 
 
-def generate_girlfriend_reply(user_message, context=None, model_path=None):
-    """
-    生成虚拟女友回复的便捷函数
-    
-    Args:
-        user_message: 用户消息
-        context: 对话上下文
-        model_path: 模型路径（可选）
-        
-    Returns:
-        str: 虚拟女友的回复
-    """
-    model = get_model_instance(model_path)
-    return model.generate_reply(user_message, context)
+def generate_girlfriend_reply(
+    text: str,
+    context: Optional[List[Dict[str, str]]] = None,
+    opts: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Compatibility helper for legacy imports."""
+    return get_model_instance().generate_reply(text, context=context, opts=opts)
+
+
+__all__ = [
+    "GirlfriendChatModel",
+    "generate_girlfriend_reply",
+    "get_model_instance",
+    "get_provider_presets",
+    "init_model",
+]

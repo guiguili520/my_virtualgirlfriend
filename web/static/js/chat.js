@@ -3,6 +3,8 @@
 // 全局变量
 let messageCount = 0;
 let isProcessing = false;
+let modelProviders = [];
+let savedModelConfig = {};
 
 // 格式化时间
 function formatTime(timestamp) {
@@ -107,6 +109,79 @@ function addMessage(sender, type, content, timestamp) {
     updateMessageCount();
 }
 
+// 添加消息但不触发滚动（用于批量加载历史）
+function addMessageWithoutScroll(sender, type, content, timestamp) {
+    const messagesContainer = document.getElementById('chat-messages');
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'flex items-start space-x-3 animate-fade-in';
+
+    if (sender === 'user') {
+        messageDiv.className += ' flex-row-reverse space-x-reverse';
+    }
+
+    // 头像
+    const avatar = document.createElement('div');
+    avatar.className = 'w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden';
+
+    if (sender === 'girlfriend') {
+        avatar.className += ' bg-gradient-to-br from-pink-200 to-pink-300';
+        avatar.innerHTML = '<img src="/static/images/girlfriend.jpg" alt="Girlfriend" class="w-full h-full object-cover">';
+    } else {
+        avatar.className += ' bg-gradient-to-br from-blue-200 to-blue-300';
+        avatar.innerHTML = '<span class="text-xl">👤</span>';
+    }
+
+    // 消息内容容器
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'flex flex-col max-w-md';
+
+    if (sender === 'user') {
+        contentDiv.className += ' items-end';
+    }
+
+    // 消息气泡
+    const bubble = document.createElement('div');
+    bubble.className = 'rounded-2xl px-4 py-3 shadow-sm';
+
+    if (sender === 'girlfriend') {
+        bubble.className += ' bg-girlfriend-bubble text-gray-800 rounded-tl-sm';
+    } else {
+        bubble.className += ' bg-user-bubble text-gray-800 rounded-tr-sm';
+    }
+
+    // 根据消息类型显示内容
+    if (type === 'text') {
+        const textContent = document.createElement('p');
+        textContent.textContent = content;
+        textContent.className = 'whitespace-pre-wrap break-words';
+        bubble.appendChild(textContent);
+    } else if (type === 'image') {
+        const img = document.createElement('img');
+        img.src = `/uploads/${content}`;
+        img.alt = 'Uploaded image';
+        img.className = 'message-image';
+        img.onclick = () => showImagePreview(img.src);
+        bubble.appendChild(img);
+    }
+
+    contentDiv.appendChild(bubble);
+
+    // 时间戳
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'text-xs text-gray-400 mt-1 ml-2';
+    if (sender === 'user') {
+        timeSpan.className += ' mr-2 text-right';
+    }
+    timeSpan.textContent = formatTime(timestamp);
+    contentDiv.appendChild(timeSpan);
+
+    messageDiv.appendChild(avatar);
+    messageDiv.appendChild(contentDiv);
+
+    messagesContainer.appendChild(messageDiv);
+    // 注意：这里不调用 scrollToBottom() 和 updateMessageCount()
+}
+
 // 添加带本地图片的消息（用于立即预览）
 function addMessageWithLocalImage(sender, localImageUrl, timestamp, messageId) {
     const messagesContainer = document.getElementById('chat-messages');
@@ -183,9 +258,20 @@ function removeMessage(messageId) {
 }
 
 // 滚动到底部
-function scrollToBottom() {
+function scrollToBottom(immediate = false) {
     const messagesContainer = document.getElementById('chat-messages');
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+    if (immediate) {
+        // 立即滚动（用于加载历史后）
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    } else {
+        // 使用 requestAnimationFrame 确保 DOM 更新后再滚动
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            });
+        });
+    }
 }
 
 // 更新消息计数
@@ -239,13 +325,15 @@ async function sendMessage() {
         updateCharCount();
         adjustTextareaHeight(messageInput);
         
+        const selectedModel = getSelectedModelOptions();
+
         // 发送到服务器
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ message: message })
+            body: JSON.stringify({ message: message, ...selectedModel })
         });
         
         const data = await response.json();
@@ -253,6 +341,7 @@ async function sendMessage() {
         if (data.status === 'success') {
             // 显示女友回复
             addMessage('girlfriend', 'text', data.reply, data.timestamp);
+            updateActiveModelStatus(data.model);
         } else {
             showNotification(data.message || '发送失败', 'error');
         }
@@ -265,6 +354,222 @@ async function sendMessage() {
         toggleLoading(false);
         messageInput.focus();
     }
+}
+
+// 加载模型供应商预设
+async function loadModelProviders() {
+    try {
+        const response = await fetch('/api/model/providers');
+        const data = await response.json();
+
+        if (data.status !== 'success') {
+            updateActiveModelStatus(null, '模型服务加载失败');
+            return;
+        }
+
+        modelProviders = data.providers || [];
+        const select = document.getElementById('model-provider');
+        const modelInput = document.getElementById('model-name');
+        select.innerHTML = '';
+
+        modelProviders.forEach(provider => {
+            const option = document.createElement('option');
+            option.value = provider.key;
+            option.textContent = provider.label;
+            option.dataset.model = provider.model || '';
+            option.dataset.apiFormat = provider.api_format || '';
+            option.dataset.configured = provider.configured ? 'true' : 'false';
+            select.appendChild(option);
+        });
+
+        const active = data.active || {};
+        savedModelConfig = data.config || {};
+        if (active.provider && modelProviders.some(p => p.key === active.provider)) {
+            select.value = active.provider;
+        }
+        applySavedModelConfig(savedModelConfig);
+        handleProviderChange();
+        updateActiveModelStatus(active);
+    } catch (error) {
+        console.error('加载模型供应商失败:', error);
+        updateActiveModelStatus(null, '模型服务加载失败');
+    }
+}
+
+// 处理模型供应商选择
+function handleProviderChange() {
+    const select = document.getElementById('model-provider');
+    const option = select.options[select.selectedIndex];
+    const modelInput = document.getElementById('model-name');
+    const baseUrlInput = document.getElementById('model-base-url');
+    const presetModel = option ? option.dataset.model : '';
+    const provider = modelProviders.find(item => item.key === select.value);
+
+    modelInput.placeholder = presetModel || '使用预设默认模型';
+    baseUrlInput.placeholder = provider && provider.base_url ? provider.base_url : '使用预设默认地址';
+
+    if (savedModelConfig.provider === select.value) {
+        modelInput.value = savedModelConfig.model || '';
+        baseUrlInput.value = savedModelConfig.base_url || '';
+    } else {
+        modelInput.value = '';
+        baseUrlInput.value = '';
+    }
+
+    if (provider) {
+        const keyConfigured = (
+            provider.configured ||
+            provider.key === 'mock' ||
+            (savedModelConfig.provider === provider.key && savedModelConfig.key_configured)
+        );
+        const keyInput = document.getElementById('model-api-key');
+        keyInput.placeholder = (
+            savedModelConfig.provider === provider.key && savedModelConfig.key_configured
+        ) ? '已保存，留空不修改' : '输入后保存到本机';
+        const keyStatus = keyConfigured ? '已就绪' : `缺少 ${provider.api_key_env || 'API Key'}`;
+        updateActiveModelStatus({
+            label: provider.label,
+            model: modelInput.value.trim() || provider.model,
+            api_format: provider.api_format,
+            mock: provider.key === 'mock' || !keyConfigured,
+            mock_reason: keyConfigured ? null : `missing_api_key:${provider.api_key_env}`
+        }, keyStatus);
+    }
+}
+
+// 应用本地保存的模型配置（不包含明文Key）
+function applySavedModelConfig(config) {
+    const providerSelect = document.getElementById('model-provider');
+    const modelInput = document.getElementById('model-name');
+    const baseUrlInput = document.getElementById('model-base-url');
+    const keyInput = document.getElementById('model-api-key');
+
+    if (config.provider && modelProviders.some(p => p.key === config.provider)) {
+        providerSelect.value = config.provider;
+    }
+    modelInput.value = config.model || '';
+    baseUrlInput.value = config.base_url || '';
+    keyInput.value = '';
+    keyInput.placeholder = config.key_configured ? '已保存，留空不修改' : '输入后保存到本机';
+}
+
+// 保存本地模型配置
+async function saveModelConfig() {
+    const providerSelect = document.getElementById('model-provider');
+    const modelInput = document.getElementById('model-name');
+    const baseUrlInput = document.getElementById('model-base-url');
+    const keyInput = document.getElementById('model-api-key');
+    const provider = modelProviders.find(item => item.key === providerSelect.value) || {};
+
+    const payload = {
+        provider: providerSelect.value,
+        api_format: provider.api_format || '',
+        model: modelInput.value.trim(),
+        base_url: baseUrlInput.value.trim(),
+        api_key: keyInput.value.trim()
+    };
+
+    try {
+        const response = await fetch('/api/model/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            savedModelConfig = data.config || {};
+            applySavedModelConfig(savedModelConfig);
+            updateActiveModelStatus(data.active);
+            await loadModelProviders();
+            showNotification('模型配置已保存', 'success');
+        } else {
+            showNotification(data.message || '保存失败', 'error');
+        }
+    } catch (error) {
+        console.error('保存模型配置失败:', error);
+        showNotification('保存失败，请稍后重试', 'error');
+    }
+}
+
+// 清除已保存Key
+async function clearSavedApiKey() {
+    const providerSelect = document.getElementById('model-provider');
+    const modelInput = document.getElementById('model-name');
+    const baseUrlInput = document.getElementById('model-base-url');
+    const provider = modelProviders.find(item => item.key === providerSelect.value) || {};
+
+    try {
+        const response = await fetch('/api/model/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                provider: providerSelect.value,
+                api_format: provider.api_format || '',
+                model: modelInput.value.trim(),
+                base_url: baseUrlInput.value.trim(),
+                clear_api_key: true
+            })
+        });
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            savedModelConfig = data.config || {};
+            applySavedModelConfig(savedModelConfig);
+            updateActiveModelStatus(data.active);
+            await loadModelProviders();
+            showNotification('已清除本地Key', 'success');
+        } else {
+            showNotification(data.message || '清除失败', 'error');
+        }
+    } catch (error) {
+        console.error('清除模型Key失败:', error);
+        showNotification('清除失败，请稍后重试', 'error');
+    }
+}
+
+// 获取当前模型选择
+function getSelectedModelOptions() {
+    const providerSelect = document.getElementById('model-provider');
+    const modelInput = document.getElementById('model-name');
+    const baseUrlInput = document.getElementById('model-base-url');
+    const provider = providerSelect ? providerSelect.value : 'mock';
+    const model = modelInput ? modelInput.value.trim() : '';
+    const baseUrl = baseUrlInput ? baseUrlInput.value.trim() : '';
+    const providerPreset = modelProviders.find(item => item.key === provider) || {};
+
+    const options = {
+        provider,
+        api_format: providerPreset.api_format || ''
+    };
+    if (model) {
+        options.model = model;
+    }
+    if (baseUrl) {
+        options.base_url = baseUrl;
+    }
+    return options;
+}
+
+// 更新模型状态展示
+function updateActiveModelStatus(model, fallbackText) {
+    const status = document.getElementById('model-status');
+    if (!status) return;
+
+    if (!model) {
+        status.textContent = fallbackText || '';
+        status.className = 'mt-2 text-xs text-gray-500';
+        return;
+    }
+
+    const label = model.label || model.provider || '模型';
+    const apiFormat = model.api_format || '';
+    const modelName = model.model || '';
+    const text = fallbackText || (model.mock ? '模拟模式' : '在线 API');
+    status.textContent = `${label} · ${apiFormat} · ${modelName} · ${text}`;
+    status.className = model.mock
+        ? 'mt-2 text-xs text-yellow-600'
+        : 'mt-2 text-xs text-green-600';
 }
 
 // 处理图片上传
@@ -345,23 +650,26 @@ async function loadChatHistory() {
     try {
         const response = await fetch('/api/history');
         const data = await response.json();
-        
+
         if (data.status === 'success' && data.history.length > 0) {
-            // 清空现有消息（保留欢迎消息）
             const messagesContainer = document.getElementById('chat-messages');
             const welcomeMessage = messagesContainer.firstElementChild;
             messagesContainer.innerHTML = '';
             messagesContainer.appendChild(welcomeMessage);
-            
-            // 添加历史消息
+
+            // 批量添加消息，不触发单条滚动
             data.history.forEach(msg => {
-                addMessage(msg.sender, msg.type, msg.content, msg.timestamp);
+                addMessageWithoutScroll(msg.sender, msg.type, msg.content, msg.timestamp);
             });
-            
-            // 加载完成后滚动到底部
-            scrollToBottom();
+
+            // 等待 DOM 完全更新后再滚动到底部
+            await new Promise(resolve => setTimeout(resolve, 100));
+            scrollToBottom(true);
+
+            // 更新消息计数
+            updateMessageCount();
         }
-        
+
     } catch (error) {
         console.error('加载历史记录失败:', error);
     }
@@ -483,6 +791,7 @@ document.addEventListener('DOMContentLoaded', () => {
     messageInput.addEventListener('input', () => {
         updateCharCount();
     });
+    loadModelProviders();
 });
 
 // 防止页面刷新时丢失正在输入的内容

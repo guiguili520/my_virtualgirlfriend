@@ -5,20 +5,45 @@ Test Virtual Girlfriend Web Application
 """
 import sys
 import json
+import importlib.util
 from pathlib import Path
 
 # 添加必要路径
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-sys.path.insert(0, str(Path(__file__).parent.parent / "web"))
+PROJECT_ROOT = Path(__file__).parent.parent
+WEB_ROOT = PROJECT_ROOT / "web"
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+sys.path.insert(0, str(WEB_ROOT))
+
+
+def load_web_config():
+    """按文件路径加载 web/config.py，避免和 src/config.py 混淆"""
+    spec = importlib.util.spec_from_file_location("test_web_config", WEB_ROOT / "config.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_web_app():
+    """按文件路径加载 web/app.py，避免受 sys.path 中 app/config 名称影响"""
+    module_name = "test_web_runtime_app"
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+
+    spec = importlib.util.spec_from_file_location(module_name, WEB_ROOT / "app.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 # 测试模块导入
 def test_imports():
     """测试所有必要的模块可以正常导入"""
     try:
-        import config as web_config
-        from models.inference import generate_girlfriend_reply
+        web_config = load_web_config()
+        from src.models.inference import generate_girlfriend_reply
         from flask import Flask
+        assert hasattr(web_config, 'SECRET_KEY')
         print("✓ 所有模块导入成功")
         return True
     except ImportError as e:
@@ -28,19 +53,20 @@ def test_imports():
 
 def test_config():
     """测试配置文件"""
-    import config as web_config
+    web_config = load_web_config()
     
     assert hasattr(web_config, 'SECRET_KEY'), "配置中缺少 SECRET_KEY"
     assert hasattr(web_config, 'MAX_FILE_SIZE'), "配置中缺少 MAX_FILE_SIZE"
     assert hasattr(web_config, 'UPLOAD_DIR'), "配置中缺少 UPLOAD_DIR"
     assert hasattr(web_config, 'CHAT_HISTORY_FILE'), "配置中缺少 CHAT_HISTORY_FILE"
+    assert hasattr(web_config, 'MODEL_CONFIG_FILE'), "配置中缺少 MODEL_CONFIG_FILE"
     
     print("✓ 配置文件测试通过")
 
 
 def test_model_inference():
     """测试模型推理功能"""
-    from models.inference import generate_girlfriend_reply
+    from src.models.inference import generate_girlfriend_reply
     
     # 测试基本回复
     reply = generate_girlfriend_reply("你好")
@@ -61,7 +87,7 @@ def test_flask_app():
     """测试Flask应用"""
     try:
         from flask import Flask
-        import config as web_config
+        web_config = load_web_config()
         
         # 创建测试app
         app = Flask(__name__)
@@ -77,10 +103,23 @@ def test_flask_app():
         raise
 
 
+def test_model_provider_presets():
+    """测试2.0模型供应商预设"""
+    from src.models.inference import get_provider_presets
+
+    providers = {item["key"]: item for item in get_provider_presets()}
+    for key in ["openai", "anthropic", "deepseek", "glm", "kimi"]:
+        assert key in providers, f"缺少模型供应商: {key}"
+
+    assert providers["openai"]["api_format"] == "openai"
+    assert providers["anthropic"]["api_format"] == "anthropic"
+    print("✓ 2.0模型供应商预设测试通过")
+
+
 def test_directory_structure():
     """测试目录结构"""
-    project_root = Path(__file__).parent.parent
-    web_root = project_root / "web"
+    project_root = PROJECT_ROOT
+    web_root = WEB_ROOT
     
     # 检查必要的目录
     required_dirs = [
@@ -115,9 +154,10 @@ def test_directory_structure():
 
 def test_chat_history_operations():
     """测试聊天历史操作"""
-    import config as web_config
     import json
     import os
+
+    web_config = load_web_config()
     
     # 确保目录存在
     web_config.DATA_DIR.mkdir(exist_ok=True)
@@ -154,6 +194,61 @@ def test_chat_history_operations():
     os.remove(test_file)
     
     print("✓ 聊天历史操作测试通过")
+
+
+def test_model_config_api_masks_and_clears_key(tmp_path, monkeypatch):
+    """测试模型配置接口保存Key但不回显明文"""
+    web_app = load_web_app()
+
+    config_file = tmp_path / "model_config.json"
+    monkeypatch.setattr(web_app.web_config, "MODEL_CONFIG_FILE", config_file)
+    web_app.app.config["TESTING"] = True
+
+    with web_app.app.test_client() as client:
+        response = client.post('/api/model/config', json={
+            "provider": "kimi",
+            "api_format": "openai",
+            "model": "kimi-k2.6",
+            "base_url": "https://api.moonshot.cn/v1",
+            "api_key": "local-secret-key",
+        })
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["status"] == "success"
+        assert payload["config"]["key_configured"] is True
+        assert "local-secret-key" not in response.get_data(as_text=True)
+
+        saved = json.loads(config_file.read_text(encoding='utf-8'))
+        assert saved["api_key"] == "local-secret-key"
+
+        get_response = client.get('/api/model/config')
+        assert get_response.status_code == 200
+        assert "local-secret-key" not in get_response.get_data(as_text=True)
+        assert get_response.get_json()["config"]["key_configured"] is True
+
+        providers_response = client.get('/api/model/providers')
+        providers = {
+            item["key"]: item
+            for item in providers_response.get_json()["providers"]
+        }
+        assert providers["kimi"]["configured"] is True
+
+        opts = web_app.build_model_opts({"provider": "kimi"})
+        assert opts["api_key"] == "local-secret-key"
+        assert "api_key" not in web_app.build_model_opts({"provider": "openai"})
+
+        clear_response = client.post('/api/model/config', json={
+            "provider": "kimi",
+            "api_format": "openai",
+            "model": "kimi-k2.6",
+            "base_url": "https://api.moonshot.cn/v1",
+            "clear_api_key": True,
+        })
+        assert clear_response.status_code == 200
+        assert clear_response.get_json()["config"]["key_configured"] is False
+        assert "api_key" not in json.loads(config_file.read_text(encoding='utf-8'))
+
+    print("✓ 模型配置接口脱敏与清除测试通过")
 
 
 if __name__ == "__main__":

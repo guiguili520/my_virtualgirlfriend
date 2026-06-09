@@ -25,6 +25,7 @@ werkzeug>=3.0.0
 # Data Processing
 numpy>=1.24.0
 pandas>=2.0.0
+pyyaml>=6.0
 
 # 开发工具
 # Development Tools
