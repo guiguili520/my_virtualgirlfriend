@@ -7,6 +7,7 @@
 - 智能增强决策
 - 网络搜索和MCP集成
 - 多源信息整合（排序、去重、摘要）
+- 在线模型 API 调用（OpenAI / Anthropic 格式）
 - 人格化处理
 - 结构化日志记录
 
@@ -28,7 +29,7 @@ The inference pipeline is the core inference engine of the Virtual Girlfriend pr
     ↓
 [提示词构建] Prompt Building
     ↓
-[模型推理] Model Inference
+[在线模型API] Model API (OpenAI / Anthropic)
     ↓
 [人格化处理] Persona Enhancement
     ↓
@@ -49,6 +50,9 @@ src/
 │   ├── summarizer.py     # 摘要生成
 │   └── persona_helper.py # 人格化助手
 └── config.py             # 配置文件（包含增强配置）
+src/models/
+├── api_client.py         # 2.0 在线模型API客户端和供应商预设
+└── inference.py          # 统一模型包装
 ```
 
 ## 快速开始 / Quick Start
@@ -73,8 +77,42 @@ print(result["response"])
 # 自定义选项
 opts = {
     "enable_enhancement": True,  # 启用增强
+    "model_provider": "deepseek" # openai / anthropic / deepseek / glm / kimi
 }
 result = run_chat("今天天气怎么样？", opts=opts)
+```
+
+### 2.0 在线模型配置
+
+默认 provider 是 `mock`，无需密钥。Web 聊天页左侧可以直接保存模型配置和 API Key，本地文件为 `web/data/model_config.json`，接口只返回是否已配置，不回显明文 Key。
+
+也可以通过环境变量切换在线供应商：
+
+```bash
+export VG_MODEL_PROVIDER=openai
+export OPENAI_API_KEY=your-key
+
+export VG_MODEL_PROVIDER=anthropic
+export ANTHROPIC_API_KEY=your-key
+
+export VG_MODEL_PROVIDER=deepseek
+export DEEPSEEK_API_KEY=your-key
+
+export VG_MODEL_PROVIDER=glm
+export ZHIPUAI_API_KEY=your-key
+
+export VG_MODEL_PROVIDER=kimi
+export MOONSHOT_API_KEY=your-key
+```
+
+自定义兼容服务：
+
+```bash
+export VG_MODEL_PROVIDER=custom-openai
+export VG_MODEL_API_FORMAT=openai
+export VG_MODEL_BASE_URL=https://your-endpoint/v1
+export VG_MODEL_NAME=your-model
+export VG_MODEL_API_KEY=your-key
 ```
 
 ### 运行演示

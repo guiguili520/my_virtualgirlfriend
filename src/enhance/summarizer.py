@@ -25,52 +25,65 @@ class Summarizer:
     def summarize(self, results: List[Dict[str, Any]], query: str = "") -> str:
         """
         生成结果摘要
-        
+
         Args:
             results: 待摘要的结果列表
             query: 用户查询（用于上下文）
-            
+
         Returns:
             摘要文本
         """
         if not results:
             logger.info("No results to summarize")
             return ""
-        
+
+        # 【优化】MCP 结果优先处理，不截断关键数据
+        mcp_results = [r for r in results if r.get('source') == 'mcp']
+        other_results = [r for r in results if r.get('source') != 'mcp']
+
+        # 重新排序：MCP 结果在前
+        results = mcp_results + other_results
+
         # 提取关键信息
         key_points = []
         total_length = 0
-        
-        for result in results:
+
+        for i, result in enumerate(results):
             content = result.get('content', '')
             source = result.get('source', 'unknown')
 
-            # 截取适当长度
-            snippet = self._extract_snippet(content, query)
+            # MCP 结果完整保留（关键数据不能丢失）
+            if source == 'mcp':
+                snippet = content
+                logger.info(f"Preserving complete MCP content: {len(content)} chars")
+            else:
+                # 其他结果正常截取
+                snippet = self._extract_snippet(content, query)
 
-            # 检查是否超出最大长度 (不再添加[source]标签)
-            point_text = snippet
+            # 检查是否超出最大长度
+            point_text = f"[{source}] {snippet}" if source else snippet
             if total_length + len(point_text) > self.max_length:
                 # 如果加上这条会超长，则截断或跳过
                 remaining = self.max_length - total_length
                 if remaining > 50:  # 至少留50个字符才添加
                     point_text = point_text[:remaining] + "..."
                     key_points.append(point_text)
+                logger.info(f"Summary reached max length at result {i+1}/{len(results)}")
                 break
 
             key_points.append(point_text)
             total_length += len(point_text)
-        
+
         # 合并成摘要
         if not key_points:
             summary = ""
         else:
             summary = " ".join(key_points)
-        
-        logger.info(f"Generated summary of {len(summary)} characters from {len(results)} results")
+
+        logger.info(f"Generated summary of {len(summary)} characters from {len(results)} results (MCP: {len(mcp_results)})")
         return summary
     
-    def _extract_snippet(self, content: str, query: str, max_snippet_length: int = 100) -> str:
+    def _extract_snippet(self, content: str, query: str, max_snippet_length: int = 300) -> str:
         """
         从内容中提取关键片段
         

@@ -61,6 +61,49 @@
                             <span class="text-sm text-warm-pink" id="message-count">0 条</span>
                         </div>
                     </div>
+
+                    <!-- 模型选择 -->
+                    <div class="border-t border-gray-200 pt-4 mt-4">
+                        <label for="model-provider" class="block text-sm text-gray-600 mb-2">模型服务</label>
+                        <select
+                            id="model-provider"
+                            class="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:border-warm-pink"
+                            onchange="handleProviderChange()">
+                            <option value="mock">模拟模式</option>
+                        </select>
+                        <label for="model-name" class="block text-sm text-gray-600 mt-3 mb-2">模型名称</label>
+                        <input
+                            id="model-name"
+                            type="text"
+                            class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-warm-pink"
+                            placeholder="使用预设默认模型">
+                        <label for="model-base-url" class="block text-sm text-gray-600 mt-3 mb-2">Base URL</label>
+                        <input
+                            id="model-base-url"
+                            type="text"
+                            class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-warm-pink"
+                            placeholder="使用预设默认地址">
+                        <label for="model-api-key" class="block text-sm text-gray-600 mt-3 mb-2">API Key</label>
+                        <input
+                            id="model-api-key"
+                            type="password"
+                            autocomplete="off"
+                            class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-warm-pink"
+                            placeholder="留空表示不修改已保存Key">
+                        <div class="grid grid-cols-2 gap-2 mt-3">
+                            <button
+                                onclick="saveModelConfig()"
+                                class="bg-warm-pink hover:bg-pink-400 text-white py-2 px-3 rounded-lg transition-colors duration-200 text-sm font-medium">
+                                保存配置
+                            </button>
+                            <button
+                                onclick="clearSavedApiKey()"
+                                class="bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-3 rounded-lg transition-colors duration-200 text-sm font-medium">
+                                清除Key
+                            </button>
+                        </div>
+                        <div id="model-status" class="mt-2 text-xs text-gray-500"></div>
+                    </div>
                     
                     <!-- 操作按钮 -->
                     <div class="mt-6">

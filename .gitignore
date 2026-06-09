@@ -88,11 +88,14 @@ data/validation/*.json
 
 # 模型文件夹占位符例外
 !models/.gitkeep
+!src/models/
+!src/models/*.py
 
 # Web 应用上传文件和数据
 web/uploads/*
 !web/uploads/.gitkeep
 web/data/chat_history.json
+web/data/model_config.json
 
 # MCP 配置和密钥（敏感信息）
 mcp.json
@@ -101,3 +104,4 @@ enhance_config.yaml
 # 测试文件
 test_*.py
 verify_*.py
+!tests/test_*.py

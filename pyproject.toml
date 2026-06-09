@@ -1,7 +1,7 @@
 [project]
 name = "my-virtualgirlfriend"
-version = "0.1.0"
-description = "Add your description here"
+version = "2.0.0"
+description = "Virtual AI Girlfriend 2.0 with online model API providers"
 requires-python = ">=3.12"
 dependencies = [
     "evaluate>=0.4.6",

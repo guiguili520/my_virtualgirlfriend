@@ -12,6 +12,7 @@ PROJECT_ROOT = WEB_ROOT.parent
 # 数据存储路径
 DATA_DIR = WEB_ROOT / "data"
 CHAT_HISTORY_FILE = DATA_DIR / "chat_history.json"
+MODEL_CONFIG_FILE = DATA_DIR / "model_config.json"
 
 # 上传文件配置
 UPLOAD_DIR = WEB_ROOT / "uploads"

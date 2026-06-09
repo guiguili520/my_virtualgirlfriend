@@ -1,6 +1,6 @@
 # 虚拟AI女友 (Virtual AI Girlfriend)
 
-虚拟AI 二次元女友聊天数据集生成器
+虚拟AI 二次元女友聊天数据集生成器与在线聊天应用。2.0 版本将聊天推理升级为在线模型 API 调用，支持 OpenAI 与 Anthropic 两类协议，并内置 DeepSeek、GLM、Kimi 等快捷供应商选择。
 
 ## 📝 项目简介
 
@@ -15,6 +15,8 @@
 - 🔧 **灵活配置**：支持CLI参数配置变体数量、质量阈值、场景过滤等
 - 📊 **高质量输出**：98%+表情覆盖率，100%人设一致性
 - 🌐 **Web聊天界面**：基于Flask的二次元风格聊天界面，支持文本、图片、历史记录
+- 🧠 **2.0在线推理**：支持 OpenAI Chat Completions 与 Anthropic Messages API 格式
+- ⚡ **快捷供应商选择**：内置 OpenAI、Anthropic、DeepSeek、GLM、Kimi、Mock、自定义格式
 - 🧠 **智能推理流水线**：集成搜索增强、MCP支持、多源信息整合、自动人格化处理
 - 🔌 **MCP服务集成**：多服务内容提供者，支持天气、新闻等外部知识源增强
 
@@ -22,13 +24,47 @@
 
 ### 安装要求
 
-- Python 3.6+
+- Python 3.12+
 - 数据集生成：仅使用标准库，无需安装额外依赖
 - 模型训练（可选）：见 `requirements.txt`
 
 ```bash
 # 安装所有依赖（用于模型训练）
 pip install -r requirements.txt
+```
+
+### 配置在线模型 API
+
+默认使用 `mock` 模式，无需密钥即可运行。Web 页面左侧「模型服务」区域可以直接选择 OpenAI / Anthropic / DeepSeek / GLM / Kimi，填写 API Key 后点击「保存配置」。配置会保存在本机 `web/data/model_config.json`，该文件已被 `.gitignore` 忽略，接口也不会回显明文 Key。
+
+也可以继续通过环境变量切换在线模型：
+
+```bash
+# OpenAI
+export VG_MODEL_PROVIDER=openai
+export OPENAI_API_KEY=your-openai-key
+
+# Anthropic
+export VG_MODEL_PROVIDER=anthropic
+export ANTHROPIC_API_KEY=your-anthropic-key
+
+# DeepSeek / GLM / Kimi
+export VG_MODEL_PROVIDER=deepseek
+export DEEPSEEK_API_KEY=your-deepseek-key
+
+export VG_MODEL_PROVIDER=glm
+export ZHIPUAI_API_KEY=your-zhipu-key
+
+export VG_MODEL_PROVIDER=kimi
+export MOONSHOT_API_KEY=your-moonshot-key
+```
+
+可选覆盖项：
+
+```bash
+export VG_MODEL_NAME=your-model-name
+export VG_MODEL_BASE_URL=https://your-compatible-endpoint/v1
+export VG_MODEL_API_FORMAT=openai   # openai 或 anthropic
 ```
 
 ### 启动应用
@@ -72,6 +108,10 @@ from inference import run_chat
 # 简单对话
 result = run_chat("你好呀~")
 print(result["response"])
+
+# 指定供应商快捷选项
+result = run_chat("你好呀~", opts={"model_provider": "kimi"})
+print(result["metadata"]["model"])
 
 # 带增强的查询
 result = run_chat("今天天气怎么样？", opts={"enable_enhancement": True})

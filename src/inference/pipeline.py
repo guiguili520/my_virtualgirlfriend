@@ -18,14 +18,15 @@ if project_root not in sys.path:
 
 # 使用绝对导入（避免与 web 目录的模块冲突）
 from src.config import (
-    ENABLE_ENHANCEMENT, ENHANCEMENT_MIN_QUERY_LENGTH, ENHANCEMENT_KEYWORDS,
-    ENABLE_NETWORK_SEARCH, ENABLE_MCP,
+    ENABLE_ENHANCEMENT, ENABLE_NETWORK_SEARCH, ENABLE_MCP,
+    ENHANCEMENT_MIN_QUERY_LENGTH, ENHANCEMENT_KEYWORDS,
     RANKING_TOP_K, DEDUP_SIMILARITY_THRESHOLD, SUMMARY_MAX_LENGTH,
-    PERSONA_EMOJI_PROBABILITY
+    PERSONA_EMOJI_PROBABILITY, ENABLE_MODEL_TOOL_CALLS
 )
 from src.enhance import Ranker, Deduplicator, Summarizer, PersonaHelper
 from src.mcp import MCPClient
-from src.models.inference import GirlfriendChatModel
+from src.mcp.tool_executor import ToolExecutor
+from src.models.inference import GirlfriendChatModel, get_provider_presets
 
 # 配置日志
 logging.basicConfig(
@@ -38,10 +39,16 @@ logger = logging.getLogger(__name__)
 class InferencePipeline:
     """推理流水线"""
     
-    def __init__(self, model_path: Optional[str] = None, use_mock_model: bool = False):
+    def __init__(
+        self,
+        model_path: Optional[str] = None,
+        use_mock_model: bool = False,
+        provider: Optional[str] = None,
+        api_format: Optional[str] = None,
+    ):
         """
         初始化推理流水线
-        
+
         Args:
             model_path: 模型路径
             use_mock_model: 是否使用模拟模型
@@ -51,14 +58,32 @@ class InferencePipeline:
         self.deduplicator = Deduplicator(similarity_threshold=DEDUP_SIMILARITY_THRESHOLD)
         self.summarizer = Summarizer(max_length=SUMMARY_MAX_LENGTH)
         self.persona_helper = PersonaHelper(emoji_probability=PERSONA_EMOJI_PROBABILITY)
-        
+
         # 初始化模型
-        self.model = GirlfriendChatModel(model_path=model_path, use_mock=use_mock_model)
-        
-        # 初始化MCP客户端
-        self.mcp_client = MCPClient()
-        
+        self.model = GirlfriendChatModel(
+            model_path=model_path,
+            use_mock=use_mock_model,
+            provider=provider,
+            api_format=api_format,
+        )
+
+        # MCP客户端和工具执行器按需初始化，避免普通聊天启动时访问外部服务。
+        self._mcp_client: Optional[MCPClient] = None
+        self._tool_executor: Optional[ToolExecutor] = None
+
         logger.info("InferencePipeline initialized")
+
+    @property
+    def mcp_client(self) -> MCPClient:
+        if self._mcp_client is None:
+            self._mcp_client = MCPClient()
+        return self._mcp_client
+
+    @property
+    def tool_executor(self) -> ToolExecutor:
+        if self._tool_executor is None:
+            self._tool_executor = ToolExecutor()
+        return self._tool_executor
     
     def run_chat(
         self,
@@ -128,12 +153,33 @@ class InferencePipeline:
             stages["enhancement"]["success"] = False
             stages["enhancement"]["reason"] = "Enhancement not needed"
         
-        # 阶段3: 构建提示词并生成回复
+        # 阶段3: 构建提示词并生成回复（带工具支持）
         try:
-            prompt = self._build_prompt(input_text, history, augmented_context)
-            raw_response = self.model.generate_reply(prompt, context=history)
+            enable_tools = opts.get("enable_tools", ENABLE_MODEL_TOOL_CALLS)
+            prompt = self._build_prompt(
+                input_text,
+                history,
+                augmented_context,
+                include_tool_context=enable_tools
+            )
+
+            if enable_tools:
+                # 定义模型生成函数供工具执行器使用
+                def model_generator(prompt: str) -> str:
+                    return self.model.generate_reply(prompt, context=history, opts=opts)
+
+                # 使用工具执行器进行推理循环
+                raw_response = self.tool_executor.process_with_tools(
+                    initial_prompt=prompt,
+                    model_generator=model_generator,
+                    max_iterations=3
+                )
+            else:
+                raw_response = self.model.generate_reply(prompt, context=history, opts=opts)
+
             stages["generation"]["success"] = True
             stages["generation"]["raw_length"] = len(raw_response)
+            stages["generation"]["model"] = self.model.get_model_info(opts)
             logger.info(f"Model generated response: '{raw_response[:50]}...'")
         except Exception as e:
             logger.error(f"Model generation failed: {e}")
@@ -168,6 +214,7 @@ class InferencePipeline:
             "metadata": {
                 "enhancement_used": need_enhancement and stages["enhancement"].get("success", False),
                 "sources": sources_used,
+                "model": self.model.get_model_info(opts),
                 "processing_time": processing_time,
                 "stages": stages
             }
@@ -291,11 +338,28 @@ class InferencePipeline:
             logger.info(f"Detected MCP domain: weather (query: {query[:30]}...)")
             return "weather"
 
+        # 地图/导航相关关键词
+        map_keywords = [
+            "地图", "导航", "路线", "怎么走", "怎么去", "多远", "距离",
+            "附近", "周边", "位置", "地址", "在哪", "哪里",
+            "poi", "搜索地点", "找", "查找",
+            "maps", "navigation", "route", "direction", "location"
+        ]
+        if any(k in q for k in map_keywords):
+            logger.info(f"Detected MCP domain: maps (query: {query[:30]}...)")
+            return "maps"
+
         # 新闻相关关键词
         news_keywords = ["新闻", "news", "头条", "热点", "最新消息", "报道"]
         if any(k in q for k in news_keywords):
             logger.info(f"Detected MCP domain: news (query: {query[:30]}...)")
             return "news"
+
+        # 网页抓取相关关键词
+        fetch_keywords = ["网页", "抓取", "url", "链接", "网站内容"]
+        if any(k in q for k in fetch_keywords):
+            logger.info(f"Detected MCP domain: fetch (query: {query[:30]}...)")
+            return "fetch"
 
         logger.info(f"Detected MCP domain: facts (default, query: {query[:30]}...)")
         return "facts"
@@ -304,7 +368,8 @@ class InferencePipeline:
         self,
         input_text: str,
         history: List[Dict[str, str]],
-        augmented_context: str
+        augmented_context: str,
+        include_tool_context: bool = False
     ) -> str:
         """
         构建增强的提示词
@@ -317,19 +382,38 @@ class InferencePipeline:
         Returns:
             完整的提示词
         """
+        # 按需添加工具信息到提示词
+        tool_context = self.tool_executor.get_tool_context() if include_tool_context else ""
+
         # 如果有增强上下文，添加到提示词中
         if augmented_context:
             # 移除来源标签，保持内容纯净
             clean_context = augmented_context.replace("[mcp] ", "").replace("[search] ", "")
-            prompt = f"""【参考信息】
+            prompt = f"""{tool_context}
+
+【重要参考信息 - 请务必使用以下数据回答】
 {clean_context}
 
 【用户问题】
 {input_text}
 
-请根据上述参考信息回答用户问题，确保包含关键数据。"""
+【回答要求】
+1. 必须使用上述参考信息中的具体数据（如温度、湿度、天气状况、位置等）
+2. 用自然亲切的语气回答
+3. 如果参考信息包含数字数据，必须在回答中体现
+4. 不要忽略关键信息，要确保用户获得完整准确的信息"""
         else:
-            prompt = input_text
+            answer_instruction = (
+                "请根据可用的工具为用户解答问题。需要时使用工具调用格式来获取相关信息。"
+                if include_tool_context
+                else "请用温柔体贴、俏皮可爱的语气自然回复用户。"
+            )
+            prompt = f"""{tool_context}
+
+【用户问题】
+{input_text}
+
+{answer_instruction}"""
 
         return prompt
     
@@ -399,7 +483,12 @@ class InferencePipeline:
 _pipeline_instance: Optional[InferencePipeline] = None
 
 
-def get_pipeline(model_path: Optional[str] = None, use_mock_model: bool = False) -> InferencePipeline:
+def get_pipeline(
+    model_path: Optional[str] = None,
+    use_mock_model: bool = False,
+    provider: Optional[str] = None,
+    api_format: Optional[str] = None,
+) -> InferencePipeline:
     """
     获取流水线实例（单例模式）
 
@@ -412,8 +501,13 @@ def get_pipeline(model_path: Optional[str] = None, use_mock_model: bool = False)
     """
     global _pipeline_instance
     if _pipeline_instance is None:
-        _pipeline_instance = InferencePipeline(model_path, use_mock_model)
+        _pipeline_instance = InferencePipeline(model_path, use_mock_model, provider, api_format)
     return _pipeline_instance
+
+
+def get_model_providers() -> List[Dict[str, Any]]:
+    """Return model provider presets for the web UI."""
+    return get_provider_presets()
 
 
 def run_chat(

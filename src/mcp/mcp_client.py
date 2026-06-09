@@ -103,6 +103,10 @@ class MCPClient:
         Returns:
             session_id: 会话ID，如果握手失败返回None
         """
+        if 'example.com' in service.endpoint:
+            logger.debug(f"Skipping MCP handshake for simulated service {service.name}")
+            return f"simulated-{service.name}"
+
         try:
             import requests
 
@@ -336,6 +340,7 @@ class MCPClient:
                     logger.warning(f"[{request_id}] Failed to get session ID for {service.name}")
 
             # Build request payload
+            kwargs['service_name'] = service.name
             kwargs['service_endpoint'] = service.endpoint
             payload = self._build_rest_payload(query, **kwargs)
 
@@ -444,26 +449,38 @@ class MCPClient:
 
     def _format_weather_data(self, weather_data: Dict[str, Any]) -> str:
         """
-        格式化天气数据为可读文本
-        Format weather data into readable text
+        格式化天气数据为完整可读文本
+        Format weather data into complete readable text
         """
         city = weather_data.get('city', '未知城市')
-        description = weather_data.get('description', '未知')
-        temperature = weather_data.get('temperature', '未知')
+        description = weather_data.get('description', weather_data.get('weather', '未知'))
+        temperature = weather_data.get('temperature', weather_data.get('temp', '未知'))
         humidity = weather_data.get('humidity', '未知')
-        wind_speed = weather_data.get('wind_speed', '未知')
+        wind_speed = weather_data.get('wind_speed', weather_data.get('windSpeed', '未知'))
+        wind_direction = weather_data.get('wind_direction', weather_data.get('windDir', ''))
 
         # 构建自然语言描述
-        parts = [f"{city}天气：{description}"]
+        parts = [f"{city}当前天气：{description}"]
 
         if temperature != '未知':
-            parts.append(f"温度{temperature}°C")
+            parts.append(f"气温{temperature}°C")
         if humidity != '未知':
-            parts.append(f"湿度{humidity}%")
+            parts.append(f"相对湿度{humidity}%")
         if wind_speed != '未知':
-            parts.append(f"风速{wind_speed}m/s")
+            if wind_direction:
+                parts.append(f"{wind_direction}风 {wind_speed}m/s")
+            else:
+                parts.append(f"风速{wind_speed}m/s")
 
-        return "，".join(parts)
+        # 添加体感温度（如有）
+        if 'feels_like' in weather_data:
+            parts.append(f"体感温度{weather_data['feels_like']}°C")
+
+        # 添加降水概率（如有）
+        if 'precipitation' in weather_data:
+            parts.append(f"降水概率{weather_data['precipitation']}%")
+
+        return "，".join(parts) + "。"
     
     def _query_grpc_service(
         self,
@@ -498,27 +515,51 @@ class MCPClient:
         构建REST请求负载
         Build REST request payload
         """
-        # 对于MCP服务，使用JSON-RPC 2.0格式
-        if 'mcp.api-inference.modelscope.net' in kwargs.get('service_endpoint', ''):
-            # 提取城市名称
-            city = self._extract_city_name(query)
-            logger.info(f"Extracted city name: '{city}' from query: '{query}'")
+        # 获取服务名称以判断使用哪个payload builder
+        service_name = kwargs.get('service_name', '')
+        service_endpoint = kwargs.get('service_endpoint', '')
 
-            return {
-                "jsonrpc": "2.0",
-                "id": self._request_count,
-                "method": "tools/call",
-                "params": {
-                    "name": "get_weather",
-                    "arguments": {
-                        "city": city,
-                        "units": "metric",
-                        "lang": "zh_cn"
+        # 对于MCP服务，使用JSON-RPC 2.0格式
+        if 'mcp.api-inference.modelscope.net' in service_endpoint:
+            # 根据服务名称判断使用哪个payload builder
+            if 'fetch' in service_name.lower():
+                return self._build_fetch_payload(query, **kwargs)
+            elif 'amap' in service_name.lower() or 'map' in service_name.lower():
+                return self._build_amap_payload(query, **kwargs)
+            elif 'weather' in service_name.lower() or 'weather' in str(kwargs.get('domains', [])):
+                # 天气服务payload
+                city = self._extract_city_name(query)
+                logger.info(f"Extracted city name: '{city}' from query: '{query}'")
+
+                return {
+                    "jsonrpc": "2.0",
+                    "id": self._request_count,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "get_weather",
+                        "arguments": {
+                            "city": city,
+                            "units": "metric",
+                            "lang": "zh_cn"
+                        }
                     }
                 }
-            }
+            else:
+                # 默认：通用MCP工具调用格式
+                logger.info(f"Using generic MCP tool call for service: {service_name}")
+                return {
+                    "jsonrpc": "2.0",
+                    "id": self._request_count,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "query",
+                        "arguments": {
+                            "query": query
+                        }
+                    }
+                }
 
-        # 默认格式
+        # 默认格式（非MCP服务）
         from datetime import datetime, timezone
         payload = {
             "query": query,
@@ -526,6 +567,146 @@ class MCPClient:
         }
         payload.update(kwargs)
         return payload
+
+    def _build_fetch_payload(self, query: str, **kwargs) -> Dict[str, Any]:
+        """
+        构建 Fetch MCP 服务请求负载
+        Build Fetch MCP service request payload
+        """
+        # 从 query 或 kwargs 中提取 URL
+        url = kwargs.get('url', None)
+
+        if not url:
+            # 从查询中提取 URL
+            url = self._extract_url_from_query(query)
+            if not url:
+                logger.warning(f"Could not extract URL from query: {query}, using query as URL")
+                url = query
+
+        max_length = kwargs.get('max_length', 5000)
+        start_index = kwargs.get('start_index', 0)
+        raw = kwargs.get('raw', False)
+
+        logger.info(f"Building fetch payload - URL: {url[:50]}...")
+
+        return {
+            "jsonrpc": "2.0",
+            "id": self._request_count,
+            "method": "tools/call",
+            "params": {
+                "name": "fetch",
+                "arguments": {
+                    "url": url,
+                    "max_length": max_length,
+                    "start_index": start_index,
+                    "raw": raw
+                }
+            }
+        }
+
+    def _extract_url_from_query(self, query: str) -> str:
+        """
+        从查询中提取 URL
+        Extract URL from query using regex
+        """
+        import re
+
+        # 匹配 http:// 或 https:// 开头的 URL
+        url_pattern = r'https?://[^\s\u3000\uff0c\u3001\uff1f\uff1a\u3002]*'
+        match = re.search(url_pattern, query)
+
+        if match:
+            url = match.group(0)
+            # 移除尾部的标点符号
+            url = re.sub(r'[,\.\)!?:;\'\"]+$', '', url)
+            logger.info(f"Extracted URL from query: {url}")
+            return url
+
+        logger.warning(f"No URL found in query: {query}")
+        return None
+
+    def _build_amap_payload(self, query: str, **kwargs) -> Dict[str, Any]:
+        """
+        构建高德地图 MCP 服务请求负载
+        Build Amap MCP service request payload
+
+        注意：高德地图 MCP 目前无法工作
+        ISSUE: Amap MCP tools are currently unavailable:
+        - 尝试的工具名: maps_search_poi, maps_direction, maps_geocode 等都返回 "Unknown tool"
+        - 测试其他可能的工具名都返回 "Invalid request parameters"
+        - 可能需要查看高德地图 MCP 的官方文档或与服务提供商沟通
+        """
+        logger.warning("⚠️  高德地图 MCP 服务调用 - 工具不可用")
+
+        # 作为占位符，返回一个简单的 search 请求，但预期会失败
+        location = self._extract_city_name(query)
+
+        return {
+            "jsonrpc": "2.0",
+            "id": self._request_count,
+            "method": "tools/call",
+            "params": {
+                "name": "search",
+                "arguments": {
+                    "query": location,
+                }
+            }
+        }
+
+    def _detect_map_intent(self, query: str) -> str:
+        """
+        检测地图查询的意图
+        Detect the intent of map query
+        """
+        q = query.lower()
+
+        # 路线/导航意图
+        direction_keywords = ["路线", "怎么走", "怎么去", "导航", "从", "到"]
+        if any(k in q for k in direction_keywords):
+            return "directions"
+
+        # POI 搜索意图
+        poi_keywords = ["附近", "周边", "找", "查找", "有没有", "哪里", "什么", "吃", "喝", "玩", "住"]
+        if any(k in q for k in poi_keywords):
+            return "search_poi"
+
+        # 默认为地址查询
+        return "geocode"
+
+    def _extract_poi_keywords(self, query: str) -> str:
+        """
+        从查询中提取 POI 搜索关键词
+        Extract POI keywords from query
+        """
+        import re
+
+        # 移除修饰词
+        text = query.replace("附近", " ").replace("周边", " ").replace("有没有", " ").replace("找", " ")
+        text = text.replace("什么", " ").replace("哪里", " ").replace("怎么样", " ")
+
+        # 提取可能的关键词
+        keywords = [
+            "餐厅", "饭店", "酒店", "宾馆", "便利店", "超市", "医院", "银行",
+            "地铁", "公交", "停车场", "加油站", "电影院", "公园", "学校"
+        ]
+
+        for keyword in keywords:
+            if keyword in query:
+                return keyword
+
+        # 尝试提取其他词汇
+        if "吃" in query or "饭" in query:
+            return "餐厅"
+        elif "住" in query:
+            return "宾馆"
+        elif "玩" in query:
+            return "景区"
+        else:
+            # 如果没有匹配，尝试提取最后一个有意义的词
+            words = query.split()
+            if words:
+                return words[-1]
+            return "地点"
 
     def _extract_city_name(self, query: str) -> str:
         """

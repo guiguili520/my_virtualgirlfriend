@@ -13,8 +13,9 @@ Virtual Girlfriend Chat Web Application - A cute anime-style chat interface buil
 - ✅ **图片上传** - 支持 JPG、PNG、GIF 等格式，自动保存和显示
 - ✅ **聊天历史持久化** - 自动保存到 JSON 文件，重启后可恢复
 - ✅ **响应式设计** - 支持桌面和移动端自适应
-- ✅ **大模型集成准备** - 提供模型推理接口，支持切换真实模型
-- ✅ **模拟模式** - 基于场景库的智能回复（演示用）
+- ✅ **2.0 在线模型 API** - 支持 OpenAI 格式与 Anthropic 格式
+- ✅ **快捷供应商切换** - 内置 OpenAI、Anthropic、DeepSeek、GLM、Kimi、Mock
+- ✅ **模拟模式** - 未配置密钥时自动兜底，便于本地演示
 
 ## 🏗️ 项目结构
 
@@ -32,7 +33,8 @@ web/
 │   └── images/                 # 虚拟女友头像等资源
 ├── uploads/                    # 用户上传的图片/表情包
 ├── data/
-│   └── chat_history.json       # 聊天记录持久化
+│   ├── chat_history.json       # 聊天记录持久化
+│   └── model_config.json       # 本地模型配置和API Key（已忽略）
 └── README.md                   # 本文档
 ```
 
@@ -73,6 +75,16 @@ export DEBUG=true
 
 # 自定义密钥
 export SECRET_KEY=your-secret-key
+
+# 在线模型 API，默认 mock
+export VG_MODEL_PROVIDER=deepseek
+export DEEPSEEK_API_KEY=your-deepseek-key
+
+# 其他快捷选项：
+# VG_MODEL_PROVIDER=openai      + OPENAI_API_KEY
+# VG_MODEL_PROVIDER=anthropic   + ANTHROPIC_API_KEY
+# VG_MODEL_PROVIDER=glm         + ZHIPUAI_API_KEY
+# VG_MODEL_PROVIDER=kimi        + MOONSHOT_API_KEY
 ```
 
 ## 🎨 界面设计
@@ -111,18 +123,77 @@ POST /api/chat
 Content-Type: application/json
 
 {
-  "message": "你好呀~"
+  "message": "你好呀~",
+  "provider": "kimi",
+  "model": "kimi-k2.6"
 }
 
 Response:
 {
   "status": "success",
   "reply": "嗨~ 你好呀亲爱的! 💕",
-  "timestamp": "2024-11-23T10:30:00.000Z"
+  "timestamp": "2024-11-23T10:30:00.000Z",
+  "model": {
+    "provider": "kimi",
+    "api_format": "openai",
+    "model": "kimi-k2.6"
+  }
 }
 ```
 
-### 2. 上传图片
+### 2. 获取模型供应商
+
+```http
+GET /api/model/providers
+
+Response:
+{
+  "status": "success",
+  "providers": [
+    {"key": "deepseek", "label": "DeepSeek", "api_format": "openai"},
+    {"key": "anthropic", "label": "Anthropic Claude", "api_format": "anthropic"}
+  ],
+  "active": {"provider": "mock", "mock": true}
+}
+```
+
+### 3. 保存本地模型配置
+
+```http
+POST /api/model/config
+Content-Type: application/json
+
+{
+  "provider": "kimi",
+  "api_format": "openai",
+  "model": "kimi-k2.6",
+  "base_url": "https://api.moonshot.cn/v1",
+  "api_key": "your-key"
+}
+
+Response:
+{
+  "status": "success",
+  "config": {
+    "provider": "kimi",
+    "api_format": "openai",
+    "model": "kimi-k2.6",
+    "base_url": "https://api.moonshot.cn/v1",
+    "key_configured": true
+  }
+}
+```
+
+清除本地 Key：
+
+```http
+POST /api/model/config
+Content-Type: application/json
+
+{"provider": "kimi", "clear_api_key": true}
+```
+
+### 4. 上传图片
 
 ```http
 POST /api/upload
@@ -139,7 +210,7 @@ Response:
 }
 ```
 
-### 3. 获取聊天历史
+### 5. 获取聊天历史
 
 ```http
 GET /api/history
@@ -164,7 +235,7 @@ Response:
 }
 ```
 
-### 4. 清空聊天历史
+### 6. 清空聊天历史
 
 ```http
 DELETE /api/history
@@ -176,7 +247,7 @@ Response:
 }
 ```
 
-### 5. 获取上传的图片
+### 7. 获取上传的图片
 
 ```http
 GET /uploads/{filename}
@@ -188,38 +259,23 @@ Response: 图片文件
 
 ### 模拟模式（默认）
 
-应用默认使用模拟模式，基于 71 个场景模板智能匹配回复，无需加载大模型。
+应用默认使用 mock 模式，无需本地模型权重和 API Key。
 
-### 真实模型模式
+### 在线模型模式
 
-要使用真实的大语言模型，请按以下步骤操作：
+设置 `VG_MODEL_PROVIDER` 和对应密钥即可切换。Web 侧也提供下拉框，可在当前会话里临时选择 OpenAI、Anthropic、DeepSeek、GLM 或 Kimi。
 
-1. **下载模型**
+| Provider | API格式 | Key 环境变量 |
+| --- | --- | --- |
+| openai | openai | `OPENAI_API_KEY` |
+| anthropic | anthropic | `ANTHROPIC_API_KEY` |
+| deepseek | openai | `DEEPSEEK_API_KEY` |
+| glm | openai | `ZHIPUAI_API_KEY` |
+| kimi | openai | `MOONSHOT_API_KEY` |
 
-```bash
-# 将模型放在 models/ 目录下
-models/
-└── Qwen2.5-7B-Instruct/
-    ├── config.json
-    ├── pytorch_model.bin
-    └── ...
-```
+### 训练和离线实验依赖
 
-2. **修改推理配置**
-
-编辑 `src/models/inference.py`，修改模型加载配置：
-
-```python
-# 在 app.py 或调用处设置
-from models.inference import get_model_instance
-
-model = get_model_instance(
-    model_path="/path/to/your/model",
-    use_mock=False  # 关闭模拟模式
-)
-```
-
-3. **安装模型依赖**
+聊天服务 2.0 默认走在线 API，不需要安装本地大模型依赖。若要运行训练脚本或离线模型实验，再安装：
 
 ```bash
 pip install torch transformers accelerate
@@ -230,6 +286,9 @@ pip install torch transformers accelerate
 主要配置项在 `web/config.py` 中：
 
 ```python
+# 本地数据
+MODEL_CONFIG_FILE = DATA_DIR / "model_config.json"
+
 # 文件上传配置
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
@@ -243,6 +302,8 @@ HOST = '0.0.0.0'
 PORT = 5555
 DEBUG = False
 ```
+
+模型 API Key 可在页面左侧保存到 `web/data/model_config.json`。该文件只保存在本机，已加入 `.gitignore`，前端接口只返回 `key_configured` 状态。
 
 ## 📱 功能特性
 

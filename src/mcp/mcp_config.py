@@ -160,26 +160,73 @@ def load_mcp_config(config_path: Optional[str] = None) -> MCPConfig:
 def _parse_detailed_config(mcp_data: Dict, config_file: Path) -> MCPConfig:
     """解析详细配置格式（mcp.services）"""
     services = []
-    for service_data in mcp_data.get('services', []):
-        auth_data = service_data.get('authentication', {})
-        auth_config = AuthConfig(
-            type=auth_data.get('type', 'none'),
-            key=auth_data.get('key'),
-            header=auth_data.get('header', 'Authorization')
-        )
+    priority = 1
 
-        service = ServiceConfig(
-            name=service_data['name'],
-            enabled=service_data.get('enabled', True),
-            endpoint=service_data['endpoint'],
-            protocol=service_data.get('protocol', 'rest'),
-            authentication=auth_config,
-            domains=service_data.get('domains', []),
-            timeout=service_data.get('timeout', mcp_data.get('default_timeout', 5)),
-            retries=service_data.get('retries', mcp_data.get('default_retries', 3)),
-            priority=service_data.get('priority', 999)
-        )
-        services.append(service)
+    for service_item in mcp_data.get('services', []):
+        if not isinstance(service_item, dict):
+            continue
+
+        # 兼容旧格式：{"name": "...", "endpoint": "...", ...}
+        # 新格式：{"amap-maps": {"type": "...", "url": "...", "headers": {...}}}
+        if 'name' in service_item:
+            service_entries = [(service_item['name'], service_item)]
+        else:
+            service_entries = list(service_item.items())
+
+        for service_name, service_data in service_entries:
+            if not isinstance(service_data, dict):
+                continue
+
+            # 处理认证配置
+            auth_config = AuthConfig(type='none')
+
+            # 检查新格式的 headers.Authorization
+            if 'headers' in service_data and 'Authorization' in service_data['headers']:
+                auth_header = service_data['headers']['Authorization']
+                # 解析 "Bearer <token>" 格式
+                if auth_header.startswith('Bearer '):
+                    token = auth_header.replace('Bearer ', '', 1)
+                    auth_config = AuthConfig(
+                        type='bearer',
+                        key=token,
+                        header='Authorization'
+                    )
+            # 兼容旧格式的 authentication 字段
+            elif 'authentication' in service_data:
+                auth_data = service_data['authentication']
+                auth_config = AuthConfig(
+                    type=auth_data.get('type', 'none'),
+                    key=auth_data.get('key'),
+                    header=auth_data.get('header', 'Authorization')
+                )
+
+            # 获取endpoint（兼容 url 和 endpoint 两种字段名）
+            endpoint = service_data.get('url', service_data.get('endpoint', ''))
+
+            # 获取protocol（兼容 type 和 protocol 两种字段名）
+            protocol = service_data.get('protocol', 'rest')
+            if 'type' in service_data:
+                # streamable_http 映射为 rest
+                protocol = 'rest' if service_data['type'] == 'streamable_http' else service_data['type']
+
+            # 推断domains（如果没有提供）
+            domains = service_data.get('domains', [])
+            if not domains:
+                domains = _infer_domains_from_name(service_name)
+
+            service = ServiceConfig(
+                name=service_name,
+                enabled=service_data.get('enabled', True),
+                endpoint=endpoint,
+                protocol=protocol,
+                authentication=auth_config,
+                domains=domains,
+                timeout=service_data.get('timeout', mcp_data.get('default_timeout', 5)),
+                retries=service_data.get('retries', mcp_data.get('default_retries', 3)),
+                priority=service_data.get('priority', priority)
+            )
+            services.append(service)
+            priority += 1
 
     print(f"✓ Loaded MCP config from {config_file} with {len(services)} services")
 
@@ -248,6 +295,8 @@ def _infer_domains_from_name(name: str) -> List[str]:
         'news': ['news', 'headlines', 'current_events', '新闻'],
         'search': ['search', 'query', '搜索'],
         'translate': ['translation', 'language', '翻译'],
+        'fetch': ['fetch', 'web', 'url', 'webpage', '网页', '抓取'],
+        'mcp_tool': ['tool', 'tools', 'utility', 'general', '工具', '通用'],
     }
 
     # 尝试匹配
